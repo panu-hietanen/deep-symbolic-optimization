@@ -22,10 +22,12 @@ def train_dso(config):
 
     # For some reason, for the control task, the environment needs to be instantiated
     # before creating the pool. Otherwise, gym.make() hangs during the pool initializer
+    ''' # Removed gym error as not using control task
     if config["task"]["task_type"] == "control" and config["training"]["n_cores_batch"] > 1:
         import gym
         import dso.task.control # Registers custom and third-party environments
         gym.make(config["task"]["env"])
+    '''
 
     # Train the model
     model = DeepSymbolicOptimizer(deepcopy(config))
@@ -61,10 +63,10 @@ def print_summary(config, runs, messages):
 
 @click.command()
 @click.argument('config_template', default="")
-@click.option('--runs', '--r', default=1, type=int, help="Number of independent runs with different seeds")
-@click.option('--n_cores_task', '--n', default=1, help="Number of cores to spread out across tasks")
-@click.option('--seed', '--s', default=None, type=int, help="Starting seed (overwrites seed in config), incremented for each independent run")
-@click.option('--benchmark', '--b', default=None, type=str, help="Name of benchmark")
+@click.option('--runs', default=1, type=int, help="Number of independent runs with different seeds")
+@click.option('--n_cores_task', default=1, help="Number of cores to spread out across tasks")
+@click.option('--seed', default=None, type=int, help="Starting seed (overwrites seed in config), incremented for each independent run")
+@click.option('--benchmark', default=None, type=str, help="Name of benchmark")
 @click.option('--exp_name', default=None, type=str, help="Name of experiment to manually generate log path")
 def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
     """Runs DSO in parallel across multiple seeds using multiprocessing."""
