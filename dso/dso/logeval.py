@@ -13,7 +13,12 @@ import click
 import pandas as pd
 import seaborn as sns
 import commentjson as json
-from matplotlib import pyplot as plt
+
+import sys
+import matplotlib
+sys.modules.pop('matplotlib.pyplot', None)  # Forcefully remove pyplot
+matplotlib.use('Agg', force=True)
+import matplotlib.pyplot as plt
 
 class LogEval():
     """Class to hold all logged information and provide tools
