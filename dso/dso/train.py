@@ -163,16 +163,7 @@ class Trainer():
                     print(var.name, "mean:", val.mean(), "var:", val.var())
             self.print_var_means = print_var_means
 
-        # Create the priority_queue if needed
-        if hasattr(self.policy_optimizer, 'pqt_k'):
-            from dso.policy_optimizer.pqt_policy_optimizer import PQTPolicyOptimizer
-            assert type(self.policy_optimizer) == PQTPolicyOptimizer
-            # Create the priority queue
-            k = self.policy_optimizer.pqt_k
-            if k is not None and k > 0:
-                self.priority_queue = make_queue(priority=True, capacity=k)
-        else:
-            self.priority_queue = None
+        self.priority_queue = None
 
         # Create the memory queue
         if self.use_memory:
@@ -263,27 +254,6 @@ class Trainer():
                 programs = programs + extra_programs
 
         self.nevals += self.batch_size + n_extra
-
-        # Run GP seeded with the current batch, returning elite samples
-        if self.gp_controller is not None:
-            deap_programs, deap_actions, deap_obs, deap_priors = self.gp_controller(actions)
-            self.nevals += self.gp_controller.nevals
-
-            # Pad AOP if different sized
-            if actions.shape[1] < deap_actions.shape[1]:
-                # If RL shape is smaller than GP then pad
-                pad_length = deap_actions.shape[1] - actions.shape[1]
-                actions, obs, priors = pad_action_obs_priors(actions, obs, priors, pad_length)
-            elif actions.shape[1] > deap_actions.shape[1]:
-                # If GP shape is smaller than RL then pad
-                pad_length = actions.shape[1] - deap_actions.shape[1]
-                deap_actions, deap_obs, deap_priors = pad_action_obs_priors(deap_actions, deap_obs, deap_priors, pad_length)
-
-            # Combine RNN and deap programs, actions, obs, and priors
-            programs = programs + deap_programs
-            actions = np.append(actions, deap_actions, axis=0)
-            obs = np.append(obs, deap_obs, axis=0)
-            priors = np.append(priors, deap_priors, axis=0)
 
         # Compute rewards in parallel
         if self.pool is not None and not self.synchronous:
@@ -400,16 +370,9 @@ class Trainer():
         sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
                               lengths=lengths, rewards=r, on_policy=on_policy)
 
-        # Update and sample from the priority queue
-        if self.priority_queue is not None:
-            self.priority_queue.push_best(sampled_batch, programs)
-            pqt_batch = self.priority_queue.sample_batch(self.policy_optimizer.pqt_batch_size)
-            # Train the policy
-            summaries = self.policy_optimizer.train_step(b, sampled_batch, pqt_batch)
-        else:
-            pqt_batch = None
-            # Train the policy
-            summaries = self.policy_optimizer.train_step(b, sampled_batch)
+        pqt_batch = None
+        # Train the policy
+        summaries = self.policy_optimizer.train_step(b, sampled_batch)
 
         # Walltime calculation for the iteration
         iteration_walltime = time.time() - start_time
