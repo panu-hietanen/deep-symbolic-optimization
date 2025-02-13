@@ -51,7 +51,6 @@ class DeepSymbolicOptimizer():
     def __init__(self, config=None):
         self.set_config(config)
         self.sess = None
-        self.synchronous = None
 
     def setup(self):
 
@@ -213,7 +212,6 @@ class DeepSymbolicOptimizer():
                           self.gp_controller,
                           self.logger,
                           self.pool,
-                          self.synchronous,
                           **self.config_training)
         return trainer
 
@@ -268,14 +266,13 @@ class DeepSymbolicOptimizer():
         pool = None
         n_cores_batch = self.config_training.get("n_cores_batch")
         n_cores_task = self.config_training.get("n_cores_task")
+        self.sync = self.config_training.get("sync")
 
         if n_cores_task is None:
             raise ValueError("'n_cores_task' variable has not been set in config.")
-        if n_cores_task > 1:
-            self.synchronous = True
+        if self.sync:
             pool = Pool(n_cores_task)
         else:
-            self.synchronous = False
             if n_cores_batch is not None:
                 if n_cores_batch == -1:
                     n_cores_batch = cpu_count()

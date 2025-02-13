@@ -68,7 +68,8 @@ def print_summary(config, runs, messages):
 @click.option('--seed', default=None, type=int, help="Starting seed (overwrites seed in config), incremented for each independent run")
 @click.option('--benchmark', default=None, type=str, help="Name of benchmark")
 @click.option('--exp_name', default=None, type=str, help="Name of experiment to manually generate log path")
-def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
+@click.option('--sync', default=False, type=bool, help="Option to run multiple workers synchronously")
+def main(config_template, runs, n_cores_task, seed, benchmark, exp_name, sync):
     """Runs DSO in parallel across multiple seeds using multiprocessing."""
 
     messages = []
@@ -112,11 +113,10 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
     # Fix incompatible configurations
     if n_cores_task == -1:
         n_cores_task = multiprocessing.cpu_count()
-    if n_cores_task > runs:
+    if n_cores_task > 1 and not sync:
         messages.append(
-                "INFO: Setting 'n_cores_task' to {} because there are only {} runs.".format(
-                    runs, runs))
-        n_cores_task = runs
+                "INFO: Setting 'n_cores_task' to 1 as sync option False.")
+        n_cores_task = 1
     if config["training"]["verbose"] and n_cores_task > 1:
         messages.append(
                 "INFO: Setting 'verbose' to False for parallelized run.")
@@ -132,6 +132,7 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
 
     # Save n_cores_task to config
     config["training"]["n_cores_task"] = n_cores_task
+    config["training"]["sync"] = sync
 
     # Start training
     print_summary(config, runs, messages)
