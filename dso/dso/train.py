@@ -29,11 +29,11 @@ def work(p):
 
 class Trainer():
     def __init__(self, sess, policy, policy_optimizer, gp_controller, logger,
-                 pool, n_samples=2000000, batch_size=1000, alpha=0.5,
+                 pool, synchronous, n_samples=2000000, batch_size=1000, alpha=0.5,
                  epsilon=0.05, verbose=True, baseline="R_e",
                  b_jumpstart=False, early_stopping=True, debug=0,
                  use_memory=False, memory_capacity=1e3,  warm_start=None, memory_threshold=None,
-                 complexity="token", const_optimizer="scipy", const_params=None,  n_cores_batch=1):
+                 complexity="token", const_optimizer="scipy", const_params=None,  n_cores_batch=1, n_cores_task=1):
 
         """
         Initializes the main training loop.
@@ -60,6 +60,10 @@ class Trainer():
             Pool to parallelize reward computation. For the control task, each
             worker should have its own TensorFlow model. If None, a Pool will be
             generated if n_cores_batch > 1.
+
+        synchronous : bool
+            Flag to indicate whether training should be run with synchronous
+            parallelisation or not.
 
         n_samples : int or None, optional
             Total number of objects to sample. This may be exceeded depending
@@ -125,6 +129,8 @@ class Trainer():
         n_cores_batch : int, optional
             Not used
 
+        n_cores_task : int, optional
+            Not used
 
         """
         self.sess = sess
@@ -136,6 +142,7 @@ class Trainer():
         self.gp_controller = gp_controller
         self.logger = logger
         self.pool = pool
+        self.synchronous = synchronous
         self.n_samples = n_samples
         self.batch_size = batch_size
         self.alpha = alpha
@@ -279,7 +286,7 @@ class Trainer():
             priors = np.append(priors, deap_priors, axis=0)
 
         # Compute rewards in parallel
-        if self.pool is not None:
+        if self.pool is not None and not self.synchronous:
             # Filter programs that need reward computing
             programs_to_optimize = list(set([p for p in programs if "r" not in p.__dict__]))
             pool_p_dict = { p.str : p for p in self.pool.map(work, programs_to_optimize) }
@@ -448,6 +455,10 @@ class Trainer():
 
         # Increment the iteration counter
         self.iteration += 1
+
+    def sample_synchronous(self, worker_id):
+        actions, obs, priors = self.policy.sample(self.batch_size // self.n_cores_task)
+        return actions, obs, priors, [from_tokens(a) for a in actions]
 
     def save(self, save_path):
         """

@@ -51,6 +51,7 @@ class DeepSymbolicOptimizer():
     def __init__(self, config=None):
         self.set_config(config)
         self.sess = None
+        self.synchronous = None
 
     def setup(self):
 
@@ -212,6 +213,7 @@ class DeepSymbolicOptimizer():
                           self.gp_controller,
                           self.logger,
                           self.pool,
+                          self.synchronous,
                           **self.config_training)
         return trainer
 
@@ -265,13 +267,22 @@ class DeepSymbolicOptimizer():
 
         pool = None
         n_cores_batch = self.config_training.get("n_cores_batch")
-        if n_cores_batch is not None:
-            if n_cores_batch == -1:
-                n_cores_batch = cpu_count()
-            if n_cores_batch > 1:
-                pool = Pool(n_cores_batch,
-                            initializer=set_task,
-                            initargs=(self.config_task,))
+        n_cores_task = self.config_training.get("n_cores_task")
+
+        if n_cores_task is None:
+            raise ValueError("'n_cores_task' variable has not been set in config.")
+        if n_cores_task > 1:
+            self.synchronous = True
+            pool = Pool(n_cores_task)
+        else:
+            self.synchronous = False
+            if n_cores_batch is not None:
+                if n_cores_batch == -1:
+                    n_cores_batch = cpu_count()
+                if n_cores_batch > 1:
+                    pool = Pool(n_cores_batch,
+                                initializer=set_task,
+                                initargs=(self.config_task,))
 
         # Set the Task for the parent process
         set_task(self.config_task)
