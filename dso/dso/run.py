@@ -130,6 +130,8 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
                 "INFO: Setting 'parallel_eval' to 'False' as we are already parallelizing.")
         config["gp_meld"]["parallel_eval"] = False
 
+    # Save n_cores_task to config
+    config["training"]["n_cores_task"] = n_cores_task
 
     # Start training
     print_summary(config, runs, messages)
@@ -140,18 +142,19 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
         config["experiment"]["seed"] += i
 
     # Farm out the work
-    if n_cores_task > 1:
-        pool = multiprocessing.Pool(n_cores_task)
-        for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
-            if not safe_update_summary(summary_path, result):
-                print("Warning: Could not update summary stats at {}".format(summary_path))
-            print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
-    else:
-        for i, config in enumerate(configs):
-            result, summary_path = train_dso(config)
-            if not safe_update_summary(summary_path, result):
-                print("Warning: Could not update summary stats at {}".format(summary_path))
-            print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
+    # if n_cores_task > 1:
+    #     pool = multiprocessing.Pool(n_cores_task)
+    #     for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
+    #         if not safe_update_summary(summary_path, result):
+    #             print("Warning: Could not update summary stats at {}".format(summary_path))
+    #         print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
+    # else:
+    
+    for i, config in enumerate(configs):
+        result, summary_path = train_dso(config)
+        if not safe_update_summary(summary_path, result):
+            print("Warning: Could not update summary stats at {}".format(summary_path))
+        print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
 
     # Evaluate the log files
     print("\n== POST-PROCESS START =================")
