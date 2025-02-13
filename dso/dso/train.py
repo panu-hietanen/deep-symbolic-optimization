@@ -223,160 +223,91 @@ class Trainer():
         # Record previous cache before new samples are added by from_tokens
         s_history = list(Program.cache.keys())
 
-        if self.sync:
-            raise NotImplementedError(f"Synchronous training with {self.n_cores_task} cores not implemented yet.")
-        else:
-            # Construct the actions, obs, priors, and programs
-            # Shape of actions: (batch_size, max_length)
-            # Shape of obs: (batch_size, obs_dim, max_length)
-            # Shape of priors: (batch_size, max_length, n_choices)
-            if override is None:
-                # Sample batch of Programs from the Controller
-                actions, obs, priors = self.policy.sample(self.batch_size)
-                programs = [from_tokens(a) for a in actions]            
-            else:
-                # Train on the given batch of Programs
-                actions, obs, priors, programs = override
-                for p in programs:
-                    Program.cache[p.str] = p
+        # Construct the actions, obs, priors, and programs
+        # Shape of actions: (batch_size, max_length)
+        # Shape of obs: (batch_size, obs_dim, max_length)
+        # Shape of priors: (batch_size, max_length, n_choices)
+        actions, obs, priors, programs, n_extra = self.sample_batch(override)
 
-            # Extra samples, previously already contained in cache,
-            # that were geneated during the attempt to get
-            # batch_size new samples for expensive reward evaluation
-            if self.policy.valid_extended_batch:
-                self.policy.valid_extended_batch = False
-                n_extra = self.policy.extended_batch[0]
-                if n_extra > 0:
-                    extra_programs = [from_tokens(a) for a in
-                                    self.policy.extended_batch[1]]
-                    # Concatenation is fine because rnn_policy.sample_novel()
-                    # already made sure that offline batch and extended batch
-                    # are padded to the same trajectory length
-                    actions = np.concatenate([actions, self.policy.extended_batch[1]])
-                    obs = np.concatenate([obs, self.policy.extended_batch[2]])
-                    priors = np.concatenate([priors, self.policy.extended_batch[3]])
-                    programs = programs + extra_programs
+        self.nevals += self.batch_size + n_extra
 
-            self.nevals += self.batch_size + n_extra
+        # Compute rewards in parallel
+        programs = self.compute_rewards_parallel(programs)
 
-            # Compute rewards in parallel
-            if self.pool is not None and not self.sync:
-                # Filter programs that need reward computing
-                programs_to_optimize = list(set([p for p in programs if "r" not in p.__dict__]))
-                pool_p_dict = { p.str : p for p in self.pool.map(work, programs_to_optimize) }
-                programs = [pool_p_dict[p.str] if "r" not in p.__dict__  else p for p in programs]
-                # Make sure to update cache with new programs
-                Program.cache.update(pool_p_dict)
+        # Compute rewards (or retrieve cached rewards)
+        r = np.array([p.r for p in programs])
 
-            # Compute rewards (or retrieve cached rewards)
-            r = np.array([p.r for p in programs])
+        # Back up programs to save them properly later
+        controller_programs = programs.copy() if self.logger.save_token_count else None
 
-            # Back up programs to save them properly later
-            controller_programs = programs.copy() if self.logger.save_token_count else None
+        # Need for Vanilla Policy Gradient (epsilon = null)
+        l           = np.array([len(p.traversal) for p in programs])
+        s           = [p.str for p in programs] # Str representations of Programs
+        on_policy   = np.array([p.originally_on_policy for p in programs])
+        invalid     = np.array([p.invalid for p in programs], dtype=bool)
 
-            # Need for Vanilla Policy Gradient (epsilon = null)
-            l           = np.array([len(p.traversal) for p in programs])
-            s           = [p.str for p in programs] # Str representations of Programs
-            on_policy   = np.array([p.originally_on_policy for p in programs])
-            invalid     = np.array([p.invalid for p in programs], dtype=bool)
+        if self.logger.save_positional_entropy:
+            positional_entropy = np.apply_along_axis(empirical_entropy, 0, actions)
 
-            if self.logger.save_positional_entropy:
-                positional_entropy = np.apply_along_axis(empirical_entropy, 0, actions)
+        if self.logger.save_top_samples_per_batch > 0:
+            # sort in descending order: larger rewards -> better solutions
+            sorted_idx = np.argsort(r)[::-1]
+            top_perc = int(len(programs) * float(self.logger.save_top_samples_per_batch))
+            for idx in sorted_idx[:top_perc]:
+                top_samples_per_batch.append([self.iteration, r[idx], repr(programs[idx])])
 
-            if self.logger.save_top_samples_per_batch > 0:
-                # sort in descending order: larger rewards -> better solutions
-                sorted_idx = np.argsort(r)[::-1]
-                top_perc = int(len(programs) * float(self.logger.save_top_samples_per_batch))
-                for idx in sorted_idx[:top_perc]:
-                    top_samples_per_batch.append([self.iteration, r[idx], repr(programs[idx])])
+        # Store in variables the values for the whole batch (those variables will be modified below)
+        r_full = r
+        l_full = l
+        s_full = s
+        actions_full = actions
+        invalid_full = invalid
+        r_max = np.max(r)
 
-            # Store in variables the values for the whole batch (those variables will be modified below)
-            r_full = r
-            l_full = l
-            s_full = s
-            actions_full = actions
-            invalid_full = invalid
-            r_max = np.max(r)
+        """
+        Apply risk-seeking policy gradient: compute the empirical quantile of
+        rewards and filter out programs with lesser reward.
+        """
+        programs, r, keep, quantile = self.risk_seeking_filter(programs, r)
 
-            """
-            Apply risk-seeking policy gradient: compute the empirical quantile of
-            rewards and filter out programs with lesser reward.
-            """
-            if self.epsilon is not None and self.epsilon < 1.0:
-                # Compute reward quantile estimate
-                if self.use_memory: # Memory-augmented quantile
-                    # Get subset of Programs not in buffer
-                    unique_programs = [p for p in programs \
-                                    if p.str not in self.memory_queue.unique_items]
-                    N = len(unique_programs)
+        # Filter quantities whose reward >= quantile
+        l = l[keep]
+        s = list(compress(s, keep))
+        invalid = invalid[keep]
+        actions = actions[keep, :]
+        obs = obs[keep, :, :]
+        priors = priors[keep, :, :]
+        on_policy = on_policy[keep]
 
-                    # Get rewards
-                    memory_r = self.memory_queue.get_rewards()
-                    sample_r = [p.r for p in unique_programs]
-                    combined_r = np.concatenate([memory_r, sample_r])
+        # Clip bounds of rewards to prevent NaNs in gradient descent
+        r = np.clip(r, -1e6, 1e6)
 
-                    # Compute quantile weights
-                    memory_w = self.memory_queue.compute_probs()
-                    if N == 0:
-                        print("WARNING: Found no unique samples in batch!")
-                        combined_w = memory_w / memory_w.sum() # Renormalize
-                    else:
-                        sample_w = np.repeat((1 - memory_w.sum()) / N, N)
-                        combined_w = np.concatenate([memory_w, sample_w])
+        # Compute baseline
+        # NOTE: pg_loss = tf.reduce_mean((self.r - self.baseline) * neglogp, name="pg_loss")
+        if self.baseline == "ewma_R":
+            ewma = np.mean(r) if ewma is None else self.alpha*np.mean(r) + (1 - self.alpha)*ewma
+            b = ewma
+        elif self.baseline == "R_e": # Default
+            ewma = -1
+            b = quantile
+        elif self.baseline == "ewma_R_e":
+            ewma = np.min(r) if ewma is None else self.alpha*quantile + (1 - self.alpha)*ewma
+            b = ewma
+        elif self.baseline == "combined":
+            ewma = np.mean(r) - quantile if ewma is None else self.alpha*(np.mean(r) - quantile) + (1 - self.alpha)*ewma
+            b = quantile + ewma
 
-                    # Quantile variance/bias estimates
-                    if self.memory_threshold is not None:
-                        print("Memory weight:", memory_w.sum())
-                        if memory_w.sum() > self.memory_threshold:
-                            quantile_variance(self.memory_queue, self.policy, self.batch_size, self.epsilon, self.iteration)
+        # Compute sequence lengths
+        lengths = np.array([min(len(p.traversal), self.policy.max_length)
+                            for p in programs], dtype=np.int32)
 
-                    # Compute the weighted quantile
-                    quantile = weighted_quantile(values=combined_r, weights=combined_w, q=1 - self.epsilon)
+        # Create the Batch
+        sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
+                            lengths=lengths, rewards=r, on_policy=on_policy)
 
-                else: # Empirical quantile
-                    quantile = np.quantile(r, 1 - self.epsilon, interpolation="higher")
-
-                # Filter quantities whose reward >= quantile
-                keep = r >= quantile
-                l = l[keep]
-                s = list(compress(s, keep))
-                invalid = invalid[keep]
-                r = r[keep]
-                programs  = list(compress(programs, keep))
-                actions = actions[keep, :]
-                obs = obs[keep, :, :]
-                priors = priors[keep, :, :]
-                on_policy = on_policy[keep]
-
-            # Clip bounds of rewards to prevent NaNs in gradient descent
-            r = np.clip(r, -1e6, 1e6)
-
-            # Compute baseline
-            # NOTE: pg_loss = tf.reduce_mean((self.r - self.baseline) * neglogp, name="pg_loss")
-            if self.baseline == "ewma_R":
-                ewma = np.mean(r) if ewma is None else self.alpha*np.mean(r) + (1 - self.alpha)*ewma
-                b = ewma
-            elif self.baseline == "R_e": # Default
-                ewma = -1
-                b = quantile
-            elif self.baseline == "ewma_R_e":
-                ewma = np.min(r) if ewma is None else self.alpha*quantile + (1 - self.alpha)*ewma
-                b = ewma
-            elif self.baseline == "combined":
-                ewma = np.mean(r) - quantile if ewma is None else self.alpha*(np.mean(r) - quantile) + (1 - self.alpha)*ewma
-                b = quantile + ewma
-
-            # Compute sequence lengths
-            lengths = np.array([min(len(p.traversal), self.policy.max_length)
-                                for p in programs], dtype=np.int32)
-
-            # Create the Batch
-            sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
-                                lengths=lengths, rewards=r, on_policy=on_policy)
-
-            pqt_batch = None
-            # Train the policy
-            summaries = self.policy_optimizer.train_step(b, sampled_batch)
+        pqt_batch = None
+        # Train the policy
+        summaries = self.policy_optimizer.train_step(b, sampled_batch)
 
         # Walltime calculation for the iteration
         iteration_walltime = time.time() - start_time
@@ -424,8 +355,99 @@ class Trainer():
         self.iteration += 1
 
     def sample_synchronous(self, worker_id):
-        actions, obs, priors = self.policy.sample(self.batch_size // self.n_cores_task)
+        actions, obs, priors = self.policy.sample(self.batch_size)
         return actions, obs, priors, [from_tokens(a) for a in actions]
+
+    def sample_batch(self, override):
+        """
+        Sample a batch of expressions from the policy, or if override is provided,
+        use the override data.
+        Returns (actions, obs, priors, programs) for the next training iteration.
+        """
+        if override is None:
+            # Sample batch of Programs from the Controller
+            actions, obs, priors = self.policy.sample(self.batch_size)
+            programs = [from_tokens(a) for a in actions]            
+        else:
+            # Train on the given batch of Programs
+            actions, obs, priors, programs = override
+            for p in programs:
+                Program.cache[p.str] = p
+        
+        n_extra = 0
+
+        # Possibly add extended batch
+        if self.policy.valid_extended_batch:
+            self.policy.valid_extended_batch = False
+            n_extra = self.policy.extended_batch[0]
+            if n_extra > 0:
+                extra_programs = [from_tokens(a) for a in self.policy.extended_batch[1]]
+                actions = np.concatenate([actions, self.policy.extended_batch[1]])
+                obs = np.concatenate([obs, self.policy.extended_batch[2]])
+                priors = np.concatenate([priors, self.policy.extended_batch[3]])
+                programs += extra_programs
+        return actions, obs, priors, programs, n_extra
+    
+    def compute_rewards_parallel(self, programs):
+        """
+        If using a process pool and not synchronous, parallelize the reward
+        computation by distributing to self.pool.
+        """
+        if (self.pool is None) or self.synchronous:
+            # No parallel reward or synchronous approach => do nothing
+            return programs
+
+        # Filter out programs that have not been evaluated
+        programs_to_optimize = list(set([p for p in programs if "r" not in p.__dict__]))
+        pool_p_dict = { p.str : p for p in self.pool.map(work, programs_to_optimize) }
+        programs = [pool_p_dict[p.str] if "r" not in p.__dict__  else p for p in programs]
+        # Make sure to update cache with new programs
+        Program.cache.update(pool_p_dict)
+        return programs
+    
+    def risk_seeking_filter(self, programs, rewards):
+        """
+        Apply an epsilon risk-seeking filter to keep top quantile of programs.
+        If using memory-based weighting, do so as well.
+        Returns the filtered subset of programs, plus the updated arrays.
+        """
+        # No risk seeking
+        if (self.epsilon is None) or (self.epsilon >= 1.0):
+            return programs, rewards, np.ones_like(rewards, dtype=int), None
+
+        # Weighted memory approach
+        if self.use_memory:
+            unique_programs = [p for p in programs if p.str not in self.memory_queue.unique_items]
+            N = len(unique_programs)
+            memory_r = self.memory_queue.get_rewards()
+            sample_r = [p.r for p in unique_programs]
+            combined_r = np.concatenate([memory_r, sample_r])
+            memory_w = self.memory_queue.compute_probs()
+
+            if N == 0:
+                print("WARNING: Found no unique samples in batch!")
+                combined_w = memory_w / memory_w.sum()
+            else:
+                sample_w = np.repeat((1 - memory_w.sum()) / N, N)
+                combined_w = np.concatenate([memory_w, sample_w])
+
+            # Quantile variance/bias estimates
+            if self.memory_threshold is not None:
+                print("Memory weight:", memory_w.sum())
+                if memory_w.sum() > self.memory_threshold:
+                    quantile_variance(self.memory_queue, self.policy, self.batch_size, self.epsilon, self.iteration)
+
+            quantile = weighted_quantile(values=combined_r, weights=combined_w, q=1 - self.epsilon)
+        else:
+            # Empirical quantile
+            # The 'higher' interpolation ensures we filter strictly above the quantile
+            quantile = np.quantile(rewards, 1 - self.epsilon, interpolation="higher")
+
+        keep = rewards >= quantile
+        # Filter
+        kept_programs = list(compress(programs, keep))
+        kept_rewards = rewards[keep]
+        return kept_programs, kept_rewards, keep, quantile
 
     def save(self, save_path):
         """
