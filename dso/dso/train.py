@@ -15,7 +15,6 @@ from dso.train_base import Trainer
 class SingleTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.sync = False
 
     def run_one_step(self, override=None):
         positional_entropy = None
@@ -171,7 +170,23 @@ class SingleTrainer(Trainer):
 class SyncTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.sync = True
-                    
+
     def run_one_step(self, override=None):
-        raise NotImplementedError("SyncTrainer is not implemented yet.")
+        positional_entropy = None
+        top_samples_per_batch = list()
+        if self.debug >= 1:
+            print("\nDEBUG: Policy parameter means:")
+            self.print_var_means()
+
+        ewma = None if self.b_jumpstart else 0.0 # EWMA portion of baseline
+
+        start_time = time.time()
+        if self.verbose:
+            print("-- RUNNING ITERATIONS START -------------")
+
+
+        # Number of extra samples generated during attempt to get
+        # batch_size new samples
+        n_extra = 0
+        # Record previous cache before new samples are added by from_tokens
+        s_history = list(Program.cache.keys())
