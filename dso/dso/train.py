@@ -354,10 +354,6 @@ class Trainer():
         # Increment the iteration counter
         self.iteration += 1
 
-    def sample_synchronous(self, worker_id):
-        actions, obs, priors = self.policy.sample(self.batch_size)
-        return actions, obs, priors, [from_tokens(a) for a in actions]
-
     def sample_batch(self, override):
         """
         Sample a batch of expressions from the policy, or if override is provided,
