@@ -4,6 +4,7 @@ import os
 import time
 from itertools import compress
 
+import multiprocessing as mp
 import tensorflow as tf
 import numpy as np
 
@@ -96,19 +97,7 @@ class SingleTrainer(Trainer):
         r = np.clip(r, -1e6, 1e6)
 
         # Compute baseline
-        # NOTE: pg_loss = tf.reduce_mean((self.r - self.baseline) * neglogp, name="pg_loss")
-        if self.baseline == "ewma_R":
-            ewma = np.mean(r) if ewma is None else self.alpha*np.mean(r) + (1 - self.alpha)*ewma
-            b = ewma
-        elif self.baseline == "R_e": # Default
-            ewma = -1
-            b = quantile
-        elif self.baseline == "ewma_R_e":
-            ewma = np.min(r) if ewma is None else self.alpha*quantile + (1 - self.alpha)*ewma
-            b = ewma
-        elif self.baseline == "combined":
-            ewma = np.mean(r) - quantile if ewma is None else self.alpha*(np.mean(r) - quantile) + (1 - self.alpha)*ewma
-            b = quantile + ewma
+        b, ewma = self.compute_baseline(r, quantile, ewma)
 
         # Compute sequence lengths
         lengths = np.array([min(len(p.traversal), self.policy.max_length)
@@ -171,7 +160,39 @@ class SyncTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # Parallel processing setup
+        self.task_queue = mp.Queue()
+        self.result_queue = mp.Queue()
+        self.barrier = mp.Barrier(self.n_cores_task + 1)  # +1 for main process
+
+        self.workers = [mp.Process(target=self.worker_function, args=(self.task_queue, self.result_queue, self.barrier))
+                        for _ in range(self.n_cores_task)]
+        for w in self.workers:
+            w.start()
+
+    def worker_function(self, task_queue, result_queue, barrier):
+        """Persistent worker that listens for batch sampling or reward computation tasks."""
+        while True:
+            try:
+                task = task_queue.get()
+                if task is None:
+                    break  # Stop signal
+                elif task["type"] == "sample":
+                    override = task.get("override", None)
+                    actions, obs, priors, programs, n_extra = self.sample_batch(override)
+                    result_queue.put((actions, obs, priors, programs, n_extra))
+                elif task["type"] == "reward":
+                    programs = task["programs"]
+                    for p in programs:
+                        p.r  # Force reward computation
+                    result_queue.put(programs)
+                barrier.wait(timeout=10)
+            except Exception as e:
+                print(f"Worker encountered error: {e}")
+                break
+
     def run_one_step(self, override=None):
+        s_history = list(Program.cache.keys())
         positional_entropy = None
         top_samples_per_batch = list()
         if self.debug >= 1:
@@ -182,11 +203,130 @@ class SyncTrainer(Trainer):
 
         start_time = time.time()
         if self.verbose:
-            print("-- RUNNING ITERATIONS START -------------")
+            print("-- SYNC TRAINING STEP START --")
 
+        # Request batch samples from workers
+        for _ in range(self.n_cores_task):
+            self.task_queue.put({"type": "sample", "override": override})
+        
+        # Collect batch samples from workers
+        batches = [self.result_queue.get() for _ in range(self.n_cores_task)]
+        n_extra = sum([n for _, _, _, _, n in batches])
+        batches = [(b[0], b[1], b[2], b[3]) for b in batches]
 
-        # Number of extra samples generated during attempt to get
-        # batch_size new samples
-        n_extra = 0
-        # Record previous cache before new samples are added by from_tokens
-        s_history = list(Program.cache.keys())
+        actions, obs, priors, programs = self.merge_batches(batches)
+
+        self.nevals += self.batch_size + n_extra
+
+        # Request reward computation from workers
+        programs_split = np.array_split(programs, self.n_cores_task)
+        for batch in programs_split:
+            self.task_queue.put({"type": "reward", "programs": batch})
+        
+        # Collect computed rewards
+        programs = sum([self.result_queue.get() for _ in range(self.n_cores_task)], [])
+        r = np.array([p.r for p in programs])
+        r_max = np.max(r)
+
+        # Need for Vanilla Policy Gradient (epsilon = null)
+        l           = np.array([len(p.traversal) for p in programs])
+        s           = [p.str for p in programs] # Str representations of Programs
+        on_policy   = np.array([p.originally_on_policy for p in programs])
+        invalid     = np.array([p.invalid for p in programs], dtype=bool)
+
+        # Logging
+        if self.logger.save_positional_entropy:
+            positional_entropy = np.apply_along_axis(empirical_entropy, 0, actions)
+
+        if self.logger.save_top_samples_per_batch > 0:
+            # sort in descending order: larger rewards -> better solutions
+            sorted_idx = np.argsort(r)[::-1]
+            top_perc = int(len(programs) * float(self.logger.save_top_samples_per_batch))
+            for idx in sorted_idx[:top_perc]:
+                top_samples_per_batch.append([self.iteration, r[idx], repr(programs[idx])])
+
+        # Back up programs for logging
+        controller_programs = programs.copy() if self.logger.save_token_count else None
+
+        # Store for logging
+        r_full = r
+        l_full = l
+        s_full = s
+        actions_full = actions
+        invalid_full = invalid
+        r_max = np.max(r)
+
+        # Compute risk-seeking filter
+        programs, r, keep, quantile = self.risk_seeking_filter(programs, r)
+        actions = actions[keep, :]
+        obs = obs[keep, :, :]
+        priors = priors[keep, :, :]
+
+        l = l[keep]
+        s = list(compress(s, keep))
+        invalid = invalid[keep]
+        on_policy = on_policy[keep]
+
+        # Compute baseline
+        b, ewma = self.compute_baseline(r, quantile, ewma)
+
+        # Create the Batch
+        sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
+                              lengths=np.array([len(p.traversal) for p in programs]),
+                              rewards=r, on_policy=np.array([p.originally_on_policy for p in programs]))
+
+        # Train the policy
+        summaries = self.policy_optimizer.train_step(b, sampled_batch)
+
+        # Update memory queue
+        if self.memory_queue is not None:
+            self.memory_queue.push_batch(sampled_batch, programs)
+
+        # Update best expression
+        if r_max > self.r_best:
+            self.r_best = r_max
+            self.p_r_best = programs[np.argmax(r)]
+
+        # Logging
+        iteration_walltime = time.time() - start_time
+        self.logger.save_stats(r_full, l_full, actions_full, s_full,
+                               invalid_full, r, l, actions, s, s_history,
+                               invalid, self.r_best, r_max, ewma, summaries,
+                               self.iteration, b, iteration_walltime,
+                               self.nevals, controller_programs,
+                               positional_entropy, top_samples_per_batch)
+
+        # Stop if early stopping criteria is met
+        if self.early_stopping and self.p_r_best.evaluate.get("success"):
+            print("[{}] Early stopping criteria met; breaking early.".format(get_duration(start_time)))
+            self.done = True
+
+        if self.verbose and (self.iteration + 1) % 10 == 0:
+            print("[{}] Training iteration {}, current best R: {:.4f}".format(get_duration(start_time), self.iteration + 1, self.r_best))
+
+        if self.debug >= 2:
+            print("\nParameter means after iteration {}:".format(self.iteration + 1))
+            self.print_var_means()
+
+        if self.nevals >= self.n_samples:
+            self.done = True
+
+        # Increment the iteration counter
+        self.iteration += 1
+
+    def merge_batches(self, worker_batches):
+        """Merge batches received from worker processes."""
+        all_actions, all_obs, all_priors, all_programs = zip(*worker_batches)
+        return (np.concatenate(all_actions, axis=0),
+                np.concatenate(all_obs, axis=0),
+                np.concatenate(all_priors, axis=0),
+                sum(all_programs, []))
+
+    def stop_workers(self):
+        """Stop all worker processes cleanly."""
+        for _ in self.workers:
+            self.task_queue.put(None)
+        for w in self.workers:
+            w.join()
+        self.task_queue.close()
+        self.result_queue.close()

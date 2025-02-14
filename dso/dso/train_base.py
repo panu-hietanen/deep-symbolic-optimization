@@ -319,6 +319,23 @@ class Trainer(ABC):
 
         print("Loaded Trainer state from {}.".format(load_path))
 
+    def compute_baseline(self, r, quantile, ewma):
+        # NOTE: pg_loss = tf.reduce_mean((self.r - self.baseline) * neglogp, name="pg_loss")
+        if self.baseline == "ewma_R":
+            ewma = np.mean(r) if ewma is None else self.alpha*np.mean(r) + (1 - self.alpha)*ewma
+            b = ewma
+        elif self.baseline == "R_e": # Default
+            ewma = -1
+            b = quantile
+        elif self.baseline == "ewma_R_e":
+            ewma = np.min(r) if ewma is None else self.alpha*quantile + (1 - self.alpha)*ewma
+            b = ewma
+        elif self.baseline == "combined":
+            ewma = np.mean(r) - quantile if ewma is None else self.alpha*(np.mean(r) - quantile) + (1 - self.alpha)*ewma
+            b = quantile + ewma
+
+        return b, ewma
+
     @abstractmethod
     def run_one_step(self, override=None):
         """
