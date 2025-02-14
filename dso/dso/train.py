@@ -4,6 +4,7 @@ import os
 import json
 import time
 from itertools import compress
+from copy import deepcopy
 
 import tensorflow as tf
 import numpy as np
@@ -12,6 +13,7 @@ from dso.program import Program, from_tokens
 from dso.utils import empirical_entropy, get_duration, weighted_quantile, pad_action_obs_priors
 from dso.memory import Batch, make_queue
 from dso.variance import quantile_variance
+from dso.policy.rnn_policy import create_policy_from_export
 
 # Ignore TensorFlow warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -27,7 +29,7 @@ def work(p):
     r = p.r
     return p
 
-class Trainer():
+class SyncTrainer():
     def __init__(self, sess, policy, policy_optimizer, gp_controller, logger,
                  pool, n_samples=2000000, batch_size=1000, alpha=0.5,
                  epsilon=0.05, verbose=True, baseline="R_e",
@@ -227,7 +229,15 @@ class Trainer():
         # Shape of actions: (batch_size, max_length)
         # Shape of obs: (batch_size, obs_dim, max_length)
         # Shape of priors: (batch_size, max_length, n_choices)
-        actions, obs, priors, programs, n_extra = self.sample_batch(override)
+        if self.sync:
+            # import ipdb; ipdb.set_trace()
+            args = [(override, self.batch_size, self.policy.export()) for _ in range(self.n_cores_task)]
+            batches = self.pool.starmap(sample_batch_worker, args)
+
+            # Merge worker batches
+            actions, obs, priors, programs, n_extra = self.merge_worker_batches(batches)
+        else:
+            actions, obs, priors, programs, n_extra = self.sample_batch(override)
 
         self.nevals += self.batch_size + n_extra
 
@@ -354,10 +364,6 @@ class Trainer():
         # Increment the iteration counter
         self.iteration += 1
 
-    def sample_synchronous(self, worker_id):
-        actions, obs, priors = self.policy.sample(self.batch_size)
-        return actions, obs, priors, [from_tokens(a) for a in actions]
-
     def sample_batch(self, override):
         """
         Sample a batch of expressions from the policy, or if override is provided,
@@ -404,6 +410,28 @@ class Trainer():
         # Make sure to update cache with new programs
         Program.cache.update(pool_p_dict)
         return programs
+
+    def merge_worker_batches(self, worker_batches):
+        """
+        Given a list of batches from workers, merge them into a single batch.
+        Each element of worker_batches is a tuple: (actions, obs, priors, programs, n_extra)
+        """
+        all_actions = []
+        all_obs = []
+        all_priors = []
+        all_programs = []
+        total_extra = 0
+        for actions, obs, priors, programs, n_extra in worker_batches:
+            all_actions.append(actions)
+            all_obs.append(obs)
+            all_priors.append(priors)
+            all_programs += programs
+            total_extra += n_extra
+        # Concatenate arrays along the batch dimension.
+        merged_actions = np.concatenate(all_actions, axis=0)
+        merged_obs = np.concatenate(all_obs, axis=0)
+        merged_priors = np.concatenate(all_priors, axis=0)
+        return merged_actions, merged_obs, merged_priors, all_programs, total_extra
     
     def risk_seeking_filter(self, programs, rewards):
         """
@@ -485,3 +513,35 @@ class Trainer():
             self.p_r_best = None
 
         print("Loaded Trainer state from {}.".format(load_path))
+
+def sample_batch_worker(*args):
+    """
+    Module-level helper to sample a batch of expressions from the policy, 
+    or if override is provided, use the override data.
+    Returns (actions, obs, priors, programs) for the next training iteration.
+    """
+
+    override, batch_size, policy_export = args
+
+    policy = create_policy_from_export(policy_export)
+
+    if override is None:
+        actions, obs, priors = policy.sample(batch_size)
+        programs = [from_tokens(a) for a in actions]
+    else:
+        actions, obs, priors, programs = override
+        for p in programs:
+            Program.cache[p.str] = p
+    n_extra = 0
+    # Possibly add extended batch
+    if policy.valid_extended_batch:
+        policy.valid_extended_batch = False
+        n_extra = policy.extended_batch[0]
+        if n_extra > 0:
+            extra_programs = [from_tokens(a) for a in policy.extended_batch[1]]
+            actions = np.concatenate([actions, policy.extended_batch[1]])
+            obs = np.concatenate([obs, policy.extended_batch[2]])
+            priors = np.concatenate([priors, policy.extended_batch[3]])
+            programs += extra_programs
+    return actions, obs, priors, programs, n_extra
+

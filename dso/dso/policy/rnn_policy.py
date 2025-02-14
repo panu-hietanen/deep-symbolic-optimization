@@ -9,6 +9,52 @@ from dso.memory import Batch
 from dso.policy import Policy
 from dso.utils import make_batch_ph
 
+def create_policy_from_export(policy_export):
+    """
+    Creates an instance of RNNPolicy with the given parameters.
+    This ensures each worker gets an independent policy instance.
+
+    Parameters:
+    -----------
+    policy_params : dict
+        A dictionary containing parameters required to instantiate RNNPolicy.
+
+    Returns:
+    --------
+    policy : RNNPolicy
+        A new instance of the policy, initialized in a separate session.
+    """
+    # Create a new TensorFlow session per worker
+    sess = tf.Session()
+
+    # Extract parameters from dictionary
+    prior = policy_export["prior"]
+    state_manager = policy_export["state_manager"]
+
+    # RNN-specific parameters
+    policy_kwargs = {
+        "debug": policy_export.get("debug", 0),
+        "max_length": policy_export.get("max_length", 30),
+        "action_prob_lowerbound": policy_export.get("action_prob_lowerbound", 0.0),
+        "max_attempts_at_novel_batch": policy_export.get("max_attempts_at_novel_batch", 10),
+        "sample_novel_batch": policy_export.get("sample_novel_batch", False),
+        "cell": policy_export.get("cell", "lstm"),
+        "num_layers": policy_export.get("num_layers", 1),
+        "num_units": policy_export.get("num_units", 32),
+        "initializer": policy_export.get("initializer", "zeros"),
+    }
+
+    # Instantiate RNNPolicy
+    policy = RNNPolicy(sess, prior, state_manager, **policy_kwargs)
+
+    # Initialize TensorFlow variables
+    sess.run(tf.global_variables_initializer())
+
+    if "weights" in policy_kwargs:
+        policy.set_weights(policy_kwargs["weights"])
+
+    return policy
+
 class LinearWrapper(tf.contrib.rnn.LayerRNNCell):
     """RNNCell wrapper that adds a linear layer to the output.
 
@@ -103,6 +149,9 @@ class RNNPolicy(Policy):
         self.batch_size = tf.placeholder(dtype=tf.int32, shape=(), name="batch_size")
 
         # setup model
+        self.num_layers = num_layers
+        self.num_units = num_units
+        self.initializer = initializer
         self._setup_tf_model(cell, num_layers, num_units, initializer)
 
         self.max_attempts_at_novel_batch = max_attempts_at_novel_batch
@@ -439,3 +488,50 @@ class RNNPolicy(Policy):
         logits_bounded = tf.log(probs_bounded)
 
         return logits_bounded
+    
+    def get_weights(self):
+        """
+        Retrieves the trained weights of the RNN model.
+        Returns:
+        --------
+        weights : dict
+            A dictionary of all trainable variables mapped to NumPy arrays.
+        """
+        weights = {var.name: self.sess.run(var) for var in tf.trainable_variables()}
+        return weights
+
+
+    def set_weights(self, weights):
+        """
+        Restores the RNN's weights from a dictionary.
+        Parameters:
+        -----------
+        weights : dict
+            A dictionary containing variable names as keys and NumPy arrays as values.
+        """
+        assign_ops = [tf.assign(var, weights[var.name]) for var in tf.trainable_variables()]
+        self.sess.run(assign_ops)
+    
+    def export(self) -> dict:
+        """
+        Export the policy's configuration parameters to a dictionary.
+        
+        Returns:
+            dict: A dictionary of parameters required to recreate the policy.
+        """
+        params = super().export()
+        weights = self.get_weights()
+
+        params.update({
+            "debug": self.debug,
+            "max_length": self.max_length,
+            "action_prob_lowerbound": self.action_prob_lowerbound,
+            "max_attempts_at_novel_batch": self.max_attempts_at_novel_batch,
+            "sample_novel_batch": self.sample_novel_batch,
+            "cell": self.cell,
+            "num_layers": self.num_layers,
+            "num_units": self.num_units,
+            "initializer": self.initializer,
+            "weights": weights
+        })
+        return params

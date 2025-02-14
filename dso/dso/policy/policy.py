@@ -154,4 +154,23 @@ class Policy(ABC):
         """
         raise NotImplementedError
 
+    def export(self):
+        """
+        Exports the required parameters of the policy to a dictionary.
+        This method removes TensorFlow-specific objects (such as `sess`) 
+        to ensure compatibility with multiprocessing.
+
+        Returns:
+        --------
+        params : dict
+            A dictionary of policy parameters that can be used to 
+            recreate the policy in another process.
+        """
+        return {
+            "prior": self.prior,
+            "state_manager": self.state_manager,
+            "debug": self.debug,
+            "max_length": self.max_length
+        }
+
 

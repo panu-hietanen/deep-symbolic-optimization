@@ -16,7 +16,7 @@ import tensorflow as tf
 import commentjson as json
 
 from dso.task import set_task
-from dso.train import Trainer
+from dso.train import SyncTrainer
 from dso.checkpoint import Checkpoint
 from dso.train_stats import StatsLogger
 from dso.prior import make_prior
@@ -206,13 +206,22 @@ class DeepSymbolicOptimizer():
         return state_manager
 
     def make_trainer(self):
-        trainer = Trainer(self.sess,
-                          self.policy,
-                          self.policy_optimizer,
-                          self.gp_controller,
-                          self.logger,
-                          self.pool,
-                          **self.config_training)
+        if self.sync:
+            trainer = SyncTrainer(self.sess,
+                            self.policy,
+                            self.policy_optimizer,
+                            self.gp_controller,
+                            self.logger,
+                            self.pool,
+                            **self.config_training)
+        else:
+            trainer = Trainer(self.sess,
+                self.policy,
+                self.policy_optimizer,
+                self.gp_controller,
+                self.logger,
+                self.pool,
+                **self.config_training)
         return trainer
 
     def make_logger(self):
