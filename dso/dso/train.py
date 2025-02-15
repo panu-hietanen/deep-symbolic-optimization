@@ -9,7 +9,7 @@ import tensorflow as tf
 import numpy as np
 
 from dso.program import Program
-from dso.utils import empirical_entropy, get_duration
+from dso.utils import empirical_entropy, get_duration, merge_batches
 from dso.memory import Batch
 from dso.train_base import Trainer
 
@@ -237,7 +237,7 @@ class SyncTrainer(Trainer):
         n_extra = sum([n for _, _, _, _, n in batches])
         batches = [(b[0], b[1], b[2], b[3]) for b in batches]
 
-        actions, obs, priors, programs = self.merge_batches(batches)
+        actions, obs, priors, programs = merge_batches(batches)
 
         self.nevals += self.batch_size + n_extra
 
@@ -277,7 +277,6 @@ class SyncTrainer(Trainer):
         s_full = s
         actions_full = actions
         invalid_full = invalid
-        r_max = np.max(r)
 
         # Compute risk-seeking filter
         programs, r, keep, quantile = self.risk_seeking_filter(programs, r)
@@ -336,14 +335,6 @@ class SyncTrainer(Trainer):
 
         # Increment the iteration counter
         self.iteration += 1
-
-    def merge_batches(self, worker_batches):
-        """Merge batches received from worker processes."""
-        all_actions, all_obs, all_priors, all_programs = zip(*worker_batches)
-        return (np.concatenate(all_actions, axis=0),
-                np.concatenate(all_obs, axis=0),
-                np.concatenate(all_priors, axis=0),
-                sum(all_programs, []))
 
     def stop_workers(self):
         """Stop all worker processes cleanly."""
