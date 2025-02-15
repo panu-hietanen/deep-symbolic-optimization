@@ -13,6 +13,12 @@ from dso.utils import empirical_entropy, get_duration
 from dso.memory import Batch
 from dso.train_base import Trainer
 
+# Work for multiprocessing pool: compute reward
+def work(p):
+    """Compute reward and return it with optimized constants"""
+    r = p.r
+    return p
+
 class SingleTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -155,6 +161,23 @@ class SingleTrainer(Trainer):
 
         # Increment the iteration counter
         self.iteration += 1
+
+    def compute_rewards_parallel(self, programs):
+        """
+        If using a process pool and not synchronous, parallelize the reward
+        computation by distributing to self.pool.
+        """
+        if self.pool is None:
+            # No parallel reward or synchronous approach => do nothing
+            return programs
+
+        # Filter out programs that have not been evaluated
+        programs_to_optimize = list(set([p for p in programs if "r" not in p.__dict__]))
+        pool_p_dict = { p.str : p for p in self.pool.map(work, programs_to_optimize) }
+        programs = [pool_p_dict[p.str] if "r" not in p.__dict__  else p for p in programs]
+        # Make sure to update cache with new programs
+        Program.cache.update(pool_p_dict)
+        return programs
 
 class SyncTrainer(Trainer):
     def __init__(self, *args, **kwargs):

@@ -20,12 +20,6 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 # Set TensorFlow seed
 tf.set_random_seed(0)
 
-# Work for multiprocessing pool: compute reward
-def work(p):
-    """Compute reward and return it with optimized constants"""
-    r = p.r
-    return p
-
 class Trainer(ABC):
     def __init__(self, sess, policy, policy_optimizer, gp_controller, logger,
                  pool, n_samples=2000000, batch_size=1000, alpha=0.5,
@@ -220,23 +214,6 @@ class Trainer(ABC):
                 priors = np.concatenate([priors, self.policy.extended_batch[3]])
                 programs += extra_programs
         return actions, obs, priors, programs, n_extra
-    
-    def compute_rewards_parallel(self, programs):
-        """
-        If using a process pool and not synchronous, parallelize the reward
-        computation by distributing to self.pool.
-        """
-        if (self.pool is None) or self.synchronous:
-            # No parallel reward or synchronous approach => do nothing
-            return programs
-
-        # Filter out programs that have not been evaluated
-        programs_to_optimize = list(set([p for p in programs if "r" not in p.__dict__]))
-        pool_p_dict = { p.str : p for p in self.pool.map(work, programs_to_optimize) }
-        programs = [pool_p_dict[p.str] if "r" not in p.__dict__  else p for p in programs]
-        # Make sure to update cache with new programs
-        Program.cache.update(pool_p_dict)
-        return programs
     
     def risk_seeking_filter(self, programs, rewards):
         """
