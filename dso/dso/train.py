@@ -295,8 +295,8 @@ class SyncTrainer(Trainer):
 
         # Create the Batch
         sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
-                              lengths=np.array([len(p.traversal) for p in programs]),
-                              rewards=r, on_policy=np.array([p.originally_on_policy for p in programs]))
+                              lengths=l,
+                              rewards=r, on_policy=on_policy)
 
         # Train the policy
         summaries = self.policy_optimizer.train_step(b, sampled_batch)
