@@ -50,7 +50,7 @@ class Worker(mp.Process):
                 **self.policy_kwargs
             )
 
-        # self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf.global_variables_initializer())
 
         while True:
             task = self.task_queue.get()
