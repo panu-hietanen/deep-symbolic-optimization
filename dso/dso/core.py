@@ -51,6 +51,7 @@ class DeepSymbolicOptimizer():
     def __init__(self, config=None):
         self.set_config(config)
         self.sess = None
+        self.sync = None
 
     def setup(self):
 
@@ -62,9 +63,12 @@ class DeepSymbolicOptimizer():
         self.pool = self.make_pool_and_set_task()
         self.set_seeds() # Must be called _after_ resetting graph and _after_ setting task
 
-        # Limit TF to single thread to prevent "resource not available" errors in parallelized runs
-        session_config = tf.ConfigProto(intra_op_parallelism_threads=1,
-                                        inter_op_parallelism_threads=1)
+        if self.sync:
+            session_config = tf.ConfigProto()
+        else:
+            # Limit TF to single thread to prevent "resource not available" errors in parallelized runs
+            session_config = tf.ConfigProto(intra_op_parallelism_threads=1,
+                                            inter_op_parallelism_threads=1)
         self.sess = tf.Session(config=session_config)
 
         # Setup logdirs and output files
@@ -207,21 +211,26 @@ class DeepSymbolicOptimizer():
 
     def make_trainer(self):
         if self.sync:
-            trainer = SyncTrainer(self.sess,
-                            self.policy,
-                            self.policy_optimizer,
-                            self.gp_controller,
-                            self.logger,
-                            self.pool,
-                            **self.config_training)
+            trainer = SyncTrainer(
+                        sess=self.sess,
+                        policy=self.policy,
+                        policy_optimizer=self.policy_optimizer,
+                        gp_controller=self.gp_controller,
+                        logger=self.logger,
+                        pool=self.pool,
+                        prior=self.prior,
+                        config_policy=self.config_policy,
+                        config_state_manager=self.config_state_manager,
+                        **self.config_training)
         else:
-            trainer = SingleTrainer(self.sess,
-                            self.policy,
-                            self.policy_optimizer,
-                            self.gp_controller,
-                            self.logger,
-                            self.pool,
-                            **self.config_training)
+            trainer = SingleTrainer(
+                        sess=self.sess,
+                        policy=self.policy,
+                        policy_optimizer=self.policy_optimizer,
+                        gp_controller=self.gp_controller,
+                        logger=self.logger,
+                        pool=self.pool,
+                        **self.config_training)
         return trainer
 
     def make_logger(self):
