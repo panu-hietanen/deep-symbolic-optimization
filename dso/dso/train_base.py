@@ -8,7 +8,6 @@ from abc import ABC, abstractmethod
 import tensorflow as tf
 import numpy as np
 
-from dso.program import Program, from_tokens
 from dso.utils import weighted_quantile
 from dso.memory import Batch, make_queue
 from dso.variance import quantile_variance
@@ -184,36 +183,6 @@ class Trainer(ABC):
         self.r_best = -np.inf
         self.p_r_best = None
         self.done = False
-
-    def sample_batch(self, override):
-        """
-        Sample a batch of expressions from the policy, or if override is provided,
-        use the override data.
-        Returns (actions, obs, priors, programs) for the next training iteration.
-        """
-        if override is None:
-            # Sample batch of Programs from the Controller
-            actions, obs, priors = self.policy.sample(self.batch_size)
-            programs = [from_tokens(a) for a in actions]            
-        else:
-            # Train on the given batch of Programs
-            actions, obs, priors, programs = override
-            for p in programs:
-                Program.cache[p.str] = p
-        
-        n_extra = 0
-
-        # Possibly add extended batch
-        if self.policy.valid_extended_batch:
-            self.policy.valid_extended_batch = False
-            n_extra = self.policy.extended_batch[0]
-            if n_extra > 0:
-                extra_programs = [from_tokens(a) for a in self.policy.extended_batch[1]]
-                actions = np.concatenate([actions, self.policy.extended_batch[1]])
-                obs = np.concatenate([obs, self.policy.extended_batch[2]])
-                priors = np.concatenate([priors, self.policy.extended_batch[3]])
-                programs += extra_programs
-        return actions, obs, priors, programs, n_extra
     
     def risk_seeking_filter(self, programs, rewards):
         """
