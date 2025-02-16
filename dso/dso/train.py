@@ -12,6 +12,9 @@ from dso.program import Program
 from dso.utils import empirical_entropy, get_duration, merge_batches
 from dso.memory import Batch
 from dso.train_base import Trainer
+from dso.worker import Worker
+from dso.program import Program, from_tokens
+from dso.policy.rnn_policy import RNNPolicy
 
 # Work for multiprocessing pool: compute reward
 def work(p):
@@ -179,40 +182,83 @@ class SingleTrainer(Trainer):
         Program.cache.update(pool_p_dict)
         return programs
 
+    def sample_batch(self, override):
+        """
+        Sample a batch of expressions from the policy, or if override is provided,
+        use the override data.
+        Returns (actions, obs, priors, programs) for the next training iteration.
+        """
+        if override is None:
+            # Sample batch of Programs from the Controller
+            actions, obs, priors = self.policy.sample(self.batch_size)
+            programs = [from_tokens(a) for a in actions]
+        else:
+            # Train on the given batch of Programs
+            actions, obs, priors, programs = override
+            for p in programs:
+                Program.cache[p.str] = p
+
+        n_extra = 0
+
+        # Possibly add extended batch
+        if self.policy.valid_extended_batch:
+            self.policy.valid_extended_batch = False
+            n_extra = self.policy.extended_batch[0]
+            if n_extra > 0:
+                extra_programs = [from_tokens(a) for a in self.policy.extended_batch[1]]
+                actions = np.concatenate([actions, self.policy.extended_batch[1]])
+                obs = np.concatenate([obs, self.policy.extended_batch[2]])
+                priors = np.concatenate([priors, self.policy.extended_batch[3]])
+                programs += extra_programs
+        return actions, obs, priors, programs, n_extra
+
 class SyncTrainer(Trainer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        sess,
+        policy,
+        policy_optimizer,
+        gp_controller,
+        logger,
+        pool,
+        prior,
+        config_policy,
+        config_state_manager,
+        **kwargs
+    ):
+        super().__init__(
+            sess,
+            policy,
+            policy_optimizer,
+            gp_controller,
+            logger,
+            pool,
+            **kwargs
+        )
+        self.prior = prior
+        self.config_policy = config_policy
+        self.config_state_manager = config_state_manager
 
         # Parallel processing setup
         self.task_queue = mp.Queue()
         self.result_queue = mp.Queue()
-        self.barrier = mp.Barrier(self.n_cores_task + 1)  # +1 for main process
+        self.param_queue = mp.Queue()
 
-        self.workers = [mp.Process(target=self.worker_function, args=(self.task_queue, self.result_queue, self.barrier))
-                        for _ in range(self.n_cores_task)]
-        for w in self.workers:
+        self.workers = []
+        for w_id in range(1, self.n_cores_task+1):
+            w = Worker(
+                worker_id=w_id,
+                policy_class=RNNPolicy,
+                prior=self.prior,
+                policy_kwargs=self.config_policy,
+                state_manager_kwargs=self.config_state_manager,
+                task_queue=self.task_queue,
+                result_queue=self.result_queue,
+                param_queue = self.param_queue,
+                batch_size = self.batch_size
+            )
             w.start()
-
-    def worker_function(self, task_queue, result_queue, barrier):
-        """Persistent worker that listens for batch sampling or reward computation tasks."""
-        while True:
-            try:
-                task = task_queue.get()
-                if task is None:
-                    break  # Stop signal
-                elif task["type"] == "sample":
-                    override = task.get("override", None)
-                    actions, obs, priors, programs, n_extra = self.sample_batch(override)
-                    result_queue.put((actions, obs, priors, programs, n_extra))
-                elif task["type"] == "reward":
-                    programs = task["programs"]
-                    for p in programs:
-                        p.r  # Force reward computation
-                    result_queue.put(programs)
-                barrier.wait(timeout=10)
-            except Exception as e:
-                print(f"Worker encountered error: {e}")
-                break
+            self.workers.append(w)
 
     def run_one_step(self, override=None):
         s_history = list(Program.cache.keys())
@@ -228,26 +274,31 @@ class SyncTrainer(Trainer):
         if self.verbose:
             print("-- SYNC TRAINING STEP START --")
 
+        # params = self.get_params()
+        # for _ in range(self.n_cores_task):
+        #     self.task_queue.put({"type": "update_params", "params": params})
+
         # Request batch samples from workers
         for _ in range(self.n_cores_task):
             self.task_queue.put({"type": "sample", "override": override})
         
         # Collect batch samples from workers
         batches = [self.result_queue.get() for _ in range(self.n_cores_task)]
-        n_extra = sum([n for _, _, _, _, n in batches])
-        batches = [(b[0], b[1], b[2], b[3]) for b in batches]
+        print(f'Got data {batches}')
+        n_extra = sum([batch['n_extra'] for batch in batches])
+        batches = [(b['actions'], b['obs'], b['priors'], b['programs']) for b in batches]
 
         actions, obs, priors, programs = merge_batches(batches)
 
         self.nevals += self.batch_size + n_extra
 
-        # Request reward computation from workers
-        programs_split = np.array_split(programs, self.n_cores_task)
-        for batch in programs_split:
-            self.task_queue.put({"type": "reward", "programs": batch})
-        
-        # Collect computed rewards
-        programs = sum([self.result_queue.get() for _ in range(self.n_cores_task)], [])
+        # # Request reward computation from workers
+        # programs_split = np.array_split(programs, self.n_cores_task)
+        # for batch in programs_split:
+        #     self.task_queue.put({"type": "reward", "programs": batch})
+        #
+        # # Collect computed rewards
+        # programs = sum([self.result_queue.get() for _ in range(self.n_cores_task)], [])
         r = np.array([p.r for p in programs])
         r_max = np.max(r)
 
@@ -334,13 +385,11 @@ class SyncTrainer(Trainer):
             self.done = True
 
         # Increment the iteration counter
+        if self.done:
+            for _ in range(self.n_cores_task):
+                self.task_queue.put(None)
         self.iteration += 1
 
-    def stop_workers(self):
-        """Stop all worker processes cleanly."""
-        for _ in self.workers:
-            self.task_queue.put(None)
-        for w in self.workers:
-            w.join()
-        self.task_queue.close()
-        self.result_queue.close()
+    def get_params(self):
+        """Get the current parameters of the policy"""
+        return self.policy.get_params_numpy(0)
