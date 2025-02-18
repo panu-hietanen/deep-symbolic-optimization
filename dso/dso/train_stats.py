@@ -23,7 +23,7 @@ class StatsLogger():
     """ Class responsible for dealing with output files of training statistics.
         It encapsulates all outputs to files."""
 
-    def __init__(self, sess, output_file, save_summary=False, save_all_iterations=False, hof=100,
+    def __init__(self, sess, output_file, sync=False, save_summary=False, save_all_iterations=False, hof=100,
                  save_pareto_front=True, save_positional_entropy=False, save_top_samples_per_batch=0,
                  save_cache=False, save_cache_r_min=0.9, save_freq=1, save_token_count=False):
 
@@ -66,6 +66,7 @@ class StatsLogger():
         """
         self.sess = sess
         self.output_file = output_file
+        self.sync = sync
         self.save_summary = save_summary
         self.save_all_iterations = save_all_iterations
         self.hof = hof
@@ -317,7 +318,7 @@ class StatsLogger():
             i_hof = np.argsort(r)[-self.hof:][::-1]  # Indices of top hof Programs
             hof = [programs[i] for i in i_hof]
 
-            if pool is not None:
+            if pool is not None and not self.sync:
                 results = pool.map(hof_work, hof)
             else:
                 results = list(map(hof_work, hof))

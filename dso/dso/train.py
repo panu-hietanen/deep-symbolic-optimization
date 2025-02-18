@@ -14,7 +14,6 @@ from dso.memory import Batch
 from dso.train_base import Trainer
 from dso.worker import Worker
 from dso.program import Program, from_tokens
-from dso.policy.rnn_policy import RNNPolicy
 
 # Work for multiprocessing pool: compute reward
 def work(p):
@@ -221,9 +220,10 @@ class SyncTrainer(Trainer):
         gp_controller,
         logger,
         pool,
-        prior,
-        config_policy,
-        config_state_manager,
+        workers,
+        task_queue,
+        result_queue,
+        param_queue,
         **kwargs
     ):
         super().__init__(
@@ -235,30 +235,11 @@ class SyncTrainer(Trainer):
             pool,
             **kwargs
         )
-        self.prior = prior
-        self.config_policy = config_policy
-        self.config_state_manager = config_state_manager
-
         # Parallel processing setup
-        self.task_queue = mp.Queue()
-        self.result_queue = mp.Queue()
-        self.param_queue = mp.Queue()
-
-        self.workers = []
-        for w_id in range(1, self.n_cores_task+1):
-            w = Worker(
-                worker_id=w_id,
-                policy_class=RNNPolicy,
-                prior=self.prior,
-                policy_kwargs=self.config_policy,
-                state_manager_kwargs=self.config_state_manager,
-                task_queue=self.task_queue,
-                result_queue=self.result_queue,
-                param_queue = self.param_queue,
-                batch_size = self.batch_size
-            )
-            w.start()
-            self.workers.append(w)
+        self.task_queue = task_queue
+        self.result_queue = result_queue
+        self.param_queue = param_queue
+        self.workers = workers
 
     def run_one_step(self, override=None):
         s_history = list(Program.cache.keys())
@@ -284,11 +265,12 @@ class SyncTrainer(Trainer):
         
         # Collect batch samples from workers
         batches = [self.result_queue.get() for _ in range(self.n_cores_task)]
-        print(f'Got data {batches}')
         n_extra = sum([batch['n_extra'] for batch in batches])
         batches = [(b['actions'], b['obs'], b['priors'], b['programs']) for b in batches]
 
         actions, obs, priors, programs = merge_batches(batches)
+        for p in programs:
+            Program.cache[p.str] = p
 
         self.nevals += self.batch_size + n_extra
 

@@ -20,6 +20,7 @@ class Worker(mp.Process):
             batch_size,
     ):
         super().__init__()
+        # tf.reset_default_graph()
         self.sess = None
         self.policy = None
         self.state_manager = None
@@ -28,7 +29,7 @@ class Worker(mp.Process):
         self.policy_class = policy_class
         self.prior = prior
         self.policy_kwargs = {key: value for key,value in policy_kwargs.items() if key != 'policy_type'}
-        self.state_manager_kwargs = state_manager_kwargs
+        self.state_manager_kwargs = {key: value for key,value in state_manager_kwargs.items() if key != 'type'}
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.param_queue = param_queue
@@ -54,18 +55,15 @@ class Worker(mp.Process):
 
         while True:
             task = self.task_queue.get()
-            print(task)
             if task is None:
                 print(f"Worker {self.worker_id} stopping...")
                 break
 
             elif task["type"] == "update_params":
-                print('Updating params...')
                 new_params = task["params"]
                 self.set_params(new_params)
 
             elif task["type"] == "sample":
-                print('Sampling...')
                 override = task["override"]
                 actions, obs, priors, programs, n_extra = self.sample_batch(override)
                 data = {
@@ -76,11 +74,10 @@ class Worker(mp.Process):
                     "programs": programs,
                     "n_extra": n_extra,
                 }
-                print('Returning...')
                 self.result_queue.put(data)
 
             else:
-                print(f"Worker {self.worker_id} received unknown task type: {task['type']}")
+                raise NotImplementedError(f"Worker {self.worker_id} received unknown task type: {task['type']}")
 
         self.sess.close()
 
@@ -97,8 +94,6 @@ class Worker(mp.Process):
         else:
             # Train on the given batch of Programs
             actions, obs, priors, programs = override
-            for p in programs:
-                Program.cache[p.str] = p
 
         n_extra = 0
 

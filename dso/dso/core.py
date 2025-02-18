@@ -6,6 +6,7 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 import os
 import zlib
 from collections import defaultdict
+import multiprocessing as mp
 from multiprocessing import Pool, cpu_count
 import random
 from time import time
@@ -23,6 +24,8 @@ from dso.prior import make_prior
 from dso.program import Program
 from dso.config import load_config
 from dso.tf_state_manager import make_state_manager
+from dso.policy.rnn_policy import RNNPolicy
+from dso.worker import Worker, Worker
 
 from dso.policy.policy import make_policy
 from dso.policy_optimizer import make_policy_optimizer
@@ -57,10 +60,14 @@ class DeepSymbolicOptimizer():
 
         # Clear the cache and reset the compute graph
         Program.clear_cache()
-        tf.reset_default_graph()
 
         # Generate objects needed for training and set seeds
         self.pool = self.make_pool_and_set_task()
+        self.prior = self.make_prior()
+        if self.sync:
+            self.workers = self.make_workers()
+
+        tf.reset_default_graph()
         self.set_seeds() # Must be called _after_ resetting graph and _after_ setting task
 
         if self.sync:
@@ -76,7 +83,6 @@ class DeepSymbolicOptimizer():
         self.save_config()
 
         # Prepare training parameters
-        self.prior = self.make_prior()
         self.state_manager = self.make_state_manager()
         self.policy = self.make_policy()
         self.policy_optimizer = self.make_policy_optimizer()
@@ -160,6 +166,30 @@ class DeepSymbolicOptimizer():
         self.config_experiment = self.config["experiment"]
         self.config_checkpoint = self.config["checkpoint"]
 
+    def make_workers(self):
+        self.task_queue = mp.Queue()
+        self.result_queue = mp.Queue()
+        self.param_queue = mp.Queue()
+        batch_size = self.config_training["batch_size"]
+        n_cores_task = self.config_training.get("n_cores_task")
+
+        workers = []
+        for w_id in range(1, n_cores_task+1):
+            w = Worker(
+                worker_id=w_id,
+                policy_class=RNNPolicy,
+                prior=self.prior,
+                policy_kwargs=self.config_policy,
+                state_manager_kwargs=self.config_state_manager,
+                task_queue=self.task_queue,
+                result_queue=self.result_queue,
+                param_queue = self.param_queue,
+                batch_size = batch_size
+            )
+            w.start()
+            workers.append(w)
+        return workers
+
     def save_config(self):
         # Save the config file
         if self.output_file is not None:
@@ -218,9 +248,10 @@ class DeepSymbolicOptimizer():
                         gp_controller=self.gp_controller,
                         logger=self.logger,
                         pool=self.pool,
-                        prior=self.prior,
-                        config_policy=self.config_policy,
-                        config_state_manager=self.config_state_manager,
+                        workers=self.workers,
+                        task_queue=self.task_queue,
+                        result_queue=self.result_queue,
+                        param_queue = self.param_queue,
                         **self.config_training)
         else:
             trainer = SingleTrainer(
@@ -236,6 +267,7 @@ class DeepSymbolicOptimizer():
     def make_logger(self):
         logger = StatsLogger(self.sess,
                              self.output_file,
+                             self.sync,
                              **self.config_logger)
         return logger
 
