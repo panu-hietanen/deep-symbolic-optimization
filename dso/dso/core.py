@@ -54,7 +54,6 @@ class DeepSymbolicOptimizer():
     def __init__(self, config=None):
         self.set_config(config)
         self.sess = None
-        self.sync = None
 
     def setup(self):
 
