@@ -76,6 +76,7 @@
       "n_samples" : 2000000,
       "batch_size" : 1000,
       "epsilon" : 0.05,
+      "sync" : true,
 
       // Recommended to set this to as many cores as you can use! Especially if
       // using the "const" token.
