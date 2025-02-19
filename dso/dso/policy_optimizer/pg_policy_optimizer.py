@@ -50,6 +50,21 @@ class PGPolicyOptimizer(PolicyOptimizer):
         with tf.name_scope("summary"):
             tf.summary.scalar("pg_loss", self.pg_loss)
 
+    def compute_grads(self, baseline, sampled_batch):
+        """Compute gradients w.r.t. the policy parameters."""
+        feed_dict = {
+            self.baseline: baseline,
+            self.sampled_batch_ph: sampled_batch
+        }
+
+        return self.sess.run(self.grads, feed_dict=feed_dict)
+
+    def apply_grads(self, grad_list):
+        """Apply external gradients."""
+        feed_dict = {}
+        for placeholder, array in zip(self.grad_placeholders, grad_list):
+            feed_dict[placeholder] = array
+        self.sess.run(self.apply_op, feed_dict=feed_dict)
 
     def train_step(self, baseline, sampled_batch):
         """Computes loss, trains model, and returns summaries."""

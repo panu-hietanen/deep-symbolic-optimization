@@ -158,6 +158,14 @@ class PolicyOptimizer(ABC):
             self.train_op = optimizer.apply_gradients(self.grads_and_vars)
             # The two lines above are equivalent to:
             # self.train_op = optimizer.minimize(self.loss)
+        with tf.name_scope("accumulate"):
+            self.grad_placeholders = []
+            new_grads_and_vars = []
+            for (g, v) in self.grads_and_vars:
+                grad_ph = tf.placeholder(dtype=tf.float32, shape=g.get_shape())
+                self.grad_placeholders.append(grad_ph)
+                new_grads_and_vars.append((grad_ph, v))
+            self.apply_op = optimizer.apply_gradients(new_grads_and_vars)
         with tf.name_scope("grad_norm"):
             self.grads, _ = list(zip(*self.grads_and_vars))
             self.norms = tf.global_norm(self.grads)  
