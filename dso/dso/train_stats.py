@@ -318,7 +318,7 @@ class StatsLogger():
             i_hof = np.argsort(r)[-self.hof:][::-1]  # Indices of top hof Programs
             hof = [programs[i] for i in i_hof]
 
-            if pool is not None and not self.sync:
+            if pool is not None:
                 results = pool.map(hof_work, hof)
             else:
                 results = list(map(hof_work, hof))
@@ -352,7 +352,7 @@ class StatsLogger():
             pf = list(compress(all_programs, pareto_efficient_mask))
             pf.sort(key=lambda p: p.complexity) # Sort by complexity
 
-            if pool is not None and not self.sync:
+            if pool is not None:
                 results = pool.map(pf_work, pf)
             else:
                 results = list(map(pf_work, pf))

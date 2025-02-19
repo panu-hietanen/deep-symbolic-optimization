@@ -112,10 +112,11 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
     # Fix incompatible configurations
     if n_cores_task == -1:
         n_cores_task = multiprocessing.cpu_count()
-    if n_cores_task > 1 and not config["training"]["sync"]:
+    if n_cores_task > runs and not config["training"]["sync"]:
         messages.append(
-                "INFO: Setting 'n_cores_task' to 1 as sync option False.")
-        n_cores_task = 1
+                "INFO: Setting 'n_cores_task' to {} because there are only {} runs.".format(
+                    runs, runs))
+        n_cores_task = runs
     if config["training"]["verbose"] and n_cores_task > 1:
         messages.append(
                 "INFO: Setting 'verbose' to False for parallelized run.")
@@ -141,19 +142,18 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
         config["experiment"]["seed"] += i
 
     # Farm out the work
-    # if n_cores_task > 1:
-    #     pool = multiprocessing.Pool(n_cores_task)
-    #     for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
-    #         if not safe_update_summary(summary_path, result):
-    #             print("Warning: Could not update summary stats at {}".format(summary_path))
-    #         print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
-    # else:
-    
-    for i, config in enumerate(configs):
-        result, summary_path = train_dso(config)
-        if not safe_update_summary(summary_path, result):
-            print("Warning: Could not update summary stats at {}".format(summary_path))
-        print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
+    if n_cores_task > 1 and not config["training"]["sync"]:
+        pool = multiprocessing.Pool(n_cores_task)
+        for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
+            if not safe_update_summary(summary_path, result):
+                print("Warning: Could not update summary stats at {}".format(summary_path))
+            print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
+    else:
+        for i, config in enumerate(configs):
+            result, summary_path = train_dso(config)
+            if not safe_update_summary(summary_path, result):
+                print("Warning: Could not update summary stats at {}".format(summary_path))
+            print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
 
     # Evaluate the log files
     print("\n== POST-PROCESS START =================")
