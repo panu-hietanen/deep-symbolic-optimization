@@ -352,7 +352,7 @@ class StatsLogger():
             pf = list(compress(all_programs, pareto_efficient_mask))
             pf.sort(key=lambda p: p.complexity) # Sort by complexity
 
-            if pool is not None:
+            if pool is not None and not self.sync:
                 results = pool.map(pf_work, pf)
             else:
                 results = list(map(pf_work, pf))
