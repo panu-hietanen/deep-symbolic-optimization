@@ -169,8 +169,9 @@ class DeepSymbolicOptimizer():
         self.task_queue = mp.Queue()
         self.result_queue = mp.Queue()
         self.param_queue = mp.Queue()
-        batch_size = self.config_training["batch_size"]
         n_cores_task = self.config_training.get("n_cores_task")
+
+        worker_dict = self.make_worker_dict()
 
         workers = []
         for w_id in range(1, n_cores_task+1):
@@ -179,15 +180,27 @@ class DeepSymbolicOptimizer():
                 policy_class=RNNPolicy,
                 prior=self.prior,
                 policy_kwargs=self.config_policy,
+                policy_optimizer_kwargs=self.config_policy_optimizer,
                 state_manager_kwargs=self.config_state_manager,
                 task_queue=self.task_queue,
                 result_queue=self.result_queue,
                 param_queue = self.param_queue,
-                batch_size = batch_size
+                **worker_dict
             )
             w.start()
             workers.append(w)
         return workers
+
+    def make_worker_dict(self):
+        worker_dict = {}
+        worker_dict.update({
+            "batch_size" : self.config_training["batch_size"],
+            "epsilon" : self.config_training["epsilon"],
+            "b_jumpstart" : self.config_training["b_jumpstart"],
+            "baseline": self.config_training["baseline"],
+            "alpha": self.config_training["alpha"],
+        })
+        return worker_dict
 
     def save_config(self):
         # Save the config file

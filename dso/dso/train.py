@@ -264,92 +264,32 @@ class SyncTrainer(Trainer):
             self.task_queue.put({"type": "sample", "override": override})
         
         # Collect batch samples from workers
-        batches = [self.result_queue.get() for _ in range(self.n_cores_task)]
-        n_extra = sum([batch['n_extra'] for batch in batches])
-        batches = [(b['actions'], b['obs'], b['priors'], b['programs']) for b in batches]
+        data = [self.result_queue.get() for _ in range(self.n_cores_task)]
+        grads = [w["grads"] for w in data]
+        r_bests = [w["r_best"] for w in data]
+        p_r_bests = [w["p_r_best"] for w in data]
 
-        actions, obs, priors, programs = merge_batches(batches)
-        for p in programs:
-            Program.cache[p.str] = p
+        grads = self.accumulate_grads(grads)
 
-        self.nevals += self.batch_size + n_extra
-
-        # # Request reward computation from workers
-        # programs_split = np.array_split(programs, self.n_cores_task)
-        # for batch in programs_split:
-        #     self.task_queue.put({"type": "reward", "programs": batch})
-        #
-        # # Collect computed rewards
-        # programs = sum([self.result_queue.get() for _ in range(self.n_cores_task)], [])
-        r = np.array([p.r for p in programs])
-        r_max = np.max(r)
-
-        # Need for Vanilla Policy Gradient (epsilon = null)
-        l           = np.array([len(p.traversal) for p in programs])
-        s           = [p.str for p in programs] # Str representations of Programs
-        on_policy   = np.array([p.originally_on_policy for p in programs])
-        invalid     = np.array([p.invalid for p in programs], dtype=bool)
-
-        # Logging
-        if self.logger.save_positional_entropy:
-            positional_entropy = np.apply_along_axis(empirical_entropy, 0, actions)
-
-        if self.logger.save_top_samples_per_batch > 0:
-            # sort in descending order: larger rewards -> better solutions
-            sorted_idx = np.argsort(r)[::-1]
-            top_perc = int(len(programs) * float(self.logger.save_top_samples_per_batch))
-            for idx in sorted_idx[:top_perc]:
-                top_samples_per_batch.append([self.iteration, r[idx], repr(programs[idx])])
-
-        # Back up programs for logging
-        controller_programs = programs.copy() if self.logger.save_token_count else None
-
-        # Store for logging
-        r_full = r
-        l_full = l
-        s_full = s
-        actions_full = actions
-        invalid_full = invalid
-
-        # Compute risk-seeking filter
-        programs, r, keep, quantile = self.risk_seeking_filter(programs, r)
-        actions = actions[keep, :]
-        obs = obs[keep, :, :]
-        priors = priors[keep, :, :]
-
-        l = l[keep]
-        s = list(compress(s, keep))
-        invalid = invalid[keep]
-        on_policy = on_policy[keep]
-
-        # Compute baseline
-        b, ewma = self.compute_baseline(r, quantile, ewma)
-
-        # Create the Batch
-        sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
-                              lengths=l,
-                              rewards=r, on_policy=on_policy)
-
-        # Train the policy
-        summaries = self.policy_optimizer.train_step(b, sampled_batch)
-
-        # Update memory queue
-        if self.memory_queue is not None:
-            self.memory_queue.push_batch(sampled_batch, programs)
+        r_max = max(r_bests)
 
         # Update best expression
         if r_max > self.r_best:
-            self.r_best = r_max
-            self.p_r_best = programs[np.argmax(r)]
+                self.r_best = r_max
+                i = r_bests.index(r_max)
+                self.p_r_best = p_r_bests[i]
+
+        # Train the policy
+        summaries = self.policy_optimizer.apply_grads(grads)
 
         # Logging
         iteration_walltime = time.time() - start_time
-        self.logger.save_stats(r_full, l_full, actions_full, s_full,
-                               invalid_full, r, l, actions, s, s_history,
-                               invalid, self.r_best, r_max, ewma, summaries,
-                               self.iteration, b, iteration_walltime,
-                               self.nevals, controller_programs,
-                               positional_entropy, top_samples_per_batch)
+        # self.logger.save_stats(_, _, _, _,
+        #                        _, _, _, _, _, s_history,
+        #                        _, self.r_best, r_max, ewma, summaries,
+        #                        self.iteration, _, iteration_walltime,
+        #                        _, _,
+        #                        positional_entropy, top_samples_per_batch)
 
         # Stop if early stopping criteria is met
         if self.early_stopping and self.p_r_best.evaluate.get("success"):
@@ -371,6 +311,18 @@ class SyncTrainer(Trainer):
             for _ in range(self.n_cores_task):
                 self.task_queue.put(None)
         self.iteration += 1
+
+    def accumulate_grads(self, grads_list):
+        n_arrays = len(grads_list[0])
+        result = np.array([np.zeros_like(arr, dtype=float) for arr in grads_list[0]])
+
+        for g in grads_list:
+            for i in range(n_arrays):
+                result[i] += g[i]
+
+        result /= self.n_cores_task
+
+        return tuple(i for i in result)
 
     def get_params(self):
         """Get the current parameters of the policy"""
