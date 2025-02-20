@@ -82,6 +82,8 @@ class Worker(mp.Process):
             task = self.task_queue.get()
             if task is None:
                 print(f"Worker {self.worker_id} stopping...")
+                cache = Program.cache
+                self.result_queue.put(cache)
                 break
 
             elif task["type"] == "update_params":
@@ -126,6 +128,7 @@ class Worker(mp.Process):
                     "grads": grads,
                     "r_best": self.r_best,
                     "p_r_best": self.p_r_best,
+                    "n_extra": n_extra,
                 }
                 self.result_queue.put(data)
 

@@ -268,10 +268,13 @@ class SyncTrainer(Trainer):
         grads = [w["grads"] for w in data]
         r_bests = [w["r_best"] for w in data]
         p_r_bests = [w["p_r_best"] for w in data]
+        n_extra = sum([w["n_extra"] for w in data])
 
         grads = self.accumulate_grads(grads)
 
         r_max = max(r_bests)
+
+        self.nevals += self.batch_size * self.n_cores_task + n_extra
 
         # Update best expression
         if r_max > self.r_best:
@@ -280,7 +283,7 @@ class SyncTrainer(Trainer):
                 self.p_r_best = p_r_bests[i]
 
         # Train the policy
-        summaries = self.policy_optimizer.apply_grads(grads)
+        _ = self.policy_optimizer.apply_grads(grads)
 
         # Logging
         iteration_walltime = time.time() - start_time
@@ -310,11 +313,15 @@ class SyncTrainer(Trainer):
         if self.done:
             for _ in range(self.n_cores_task):
                 self.task_queue.put(None)
+
+            caches = [self.result_queue.get() for _ in range(self.n_cores_task)]
+            for cache in caches:
+                Program.cache.update(cache)
         self.iteration += 1
 
     def accumulate_grads(self, grads_list):
         n_arrays = len(grads_list[0])
-        result = np.array([np.zeros_like(arr, dtype=float) for arr in grads_list[0]])
+        result = np.array([np.zeros_like(arr, dtype=float) for arr in grads_list[0]], dtype=object)
 
         for g in grads_list:
             for i in range(n_arrays):

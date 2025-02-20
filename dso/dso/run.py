@@ -117,6 +117,11 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
                 "INFO: Setting 'n_cores_task' to {} because there are only {} runs.".format(
                     runs, runs))
         n_cores_task = runs
+    if n_cores_task > 1 and config["training"]["sync"]:
+        messages.append(
+            "INFO: Setting 'sync' to False as there is only one core being used"
+        )
+        config["training"]["sync"] = False
     if config["training"]["verbose"] and n_cores_task > 1:
         messages.append(
                 "INFO: Setting 'verbose' to False for parallelized run.")
@@ -129,6 +134,11 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
         messages.append(
                 "INFO: Setting 'parallel_eval' to 'False' as we are already parallelizing.")
         config["gp_meld"]["parallel_eval"] = False
+
+    if config["training"]["sync"]:
+        messages.append(
+            "INFO: Logging will be diminished for synchronous run."
+        )
 
     # Save n_cores_task to config
     config["training"]["n_cores_task"] = n_cores_task
