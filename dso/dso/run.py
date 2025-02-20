@@ -117,7 +117,7 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
                 "INFO: Setting 'n_cores_task' to {} because there are only {} runs.".format(
                     runs, runs))
         n_cores_task = runs
-    if n_cores_task > 1 and config["training"]["sync"]:
+    if n_cores_task == 1 and config["training"]["sync"]:
         messages.append(
             "INFO: Setting 'sync' to False as there is only one core being used"
         )
