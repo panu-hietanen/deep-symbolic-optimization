@@ -199,6 +199,7 @@ class DeepSymbolicOptimizer():
             "b_jumpstart" : self.config_training["b_jumpstart"],
             "baseline": self.config_training["baseline"],
             "alpha": self.config_training["alpha"],
+            "seed": self.config_experiment["seed"]
         })
         return worker_dict
 
