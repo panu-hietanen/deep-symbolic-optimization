@@ -209,4 +209,4 @@ class Worker(mp.Process):
         Set the parameters of the policy according to broadcast
         from main process.
         """
-        self.policy.set_params(params, self.worker_id)
+        self.policy.set_params_numpy(params, self.worker_id)
