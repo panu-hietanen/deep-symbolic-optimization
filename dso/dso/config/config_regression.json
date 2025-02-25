@@ -141,6 +141,10 @@
       },
       "domain_range" : {
          "on" : false
-      }
+      },
+     "exploration" : {
+         "on" : true,
+         "alpha" : 1.0
+     }
    }
 }
