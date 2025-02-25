@@ -1348,6 +1348,7 @@ class Exploration(Prior):
     def __init__(self, library, alpha=1.0):
         Prior.__init__(self, library)
         self.alpha = alpha
+        Explorer.set_exploration()
 
     def validate(self):
         return None

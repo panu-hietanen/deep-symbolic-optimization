@@ -12,6 +12,11 @@ class Explorer:
     i.e. [add, mul, x1] will store as {(add, mul): (x1, 1)}. Of course these will be mapped to the library.
     """
     _cache: Dict[tuple, Dict[int, int]] = {}
+    exploration = False
+
+    @classmethod
+    def set_exploration(cls):
+        cls.exploration = True
 
     @classmethod
     def get_cache(cls):

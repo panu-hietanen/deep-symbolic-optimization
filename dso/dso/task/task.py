@@ -139,10 +139,11 @@ class HierarchicalTask(Task):
         action = actions[:, -1] # Current action
         lib = self.library
 
-        batch_size = actions.shape[0]
-        for i in range(batch_size):
-            partial_key = tuple(actions[i])
-            Explorer.increment(partial_key)
+        if Explorer.exploration:
+            batch_size = actions.shape[0]
+            for i in range(batch_size):
+                partial_key = tuple(actions[i])
+                Explorer.increment(partial_key)
 
         # Compute parents and siblings
         parent, sibling = parents_siblings(actions,
