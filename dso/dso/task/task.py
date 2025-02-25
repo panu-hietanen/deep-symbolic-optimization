@@ -3,9 +3,10 @@
 from abc import ABC, abstractmethod
 import numpy as np
 
-from dso.program import Program
+from dso.program import Program, from_tokens
 from dso.utils import import_custom_source
 from dso.subroutines import parents_siblings
+from dso.explorer import Explorer
 
 
 class Task(ABC):
@@ -137,6 +138,11 @@ class HierarchicalTask(Task):
         dangling = obs[:, 3] # Shape of obs: (?, 4)
         action = actions[:, -1] # Current action
         lib = self.library
+
+        batch_size = actions.shape[0]
+        for i in range(batch_size):
+            partial_key = tuple(actions[i])
+            Explorer.increment(partial_key)
 
         # Compute parents and siblings
         parent, sibling = parents_siblings(actions,

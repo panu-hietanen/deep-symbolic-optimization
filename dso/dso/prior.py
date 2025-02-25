@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from prettytable import PrettyTable
 
+from dso.explorer import Explorer
 from dso.library import TokenNotFoundError, MultiDiscreteAction
 from dso.subroutines import ancestors
 from dso.subroutines import jit_check_constraint_violation, \
@@ -36,7 +37,8 @@ def make_prior(library, config_prior):
         "uniform_arity" : UniformArityPrior,
         "domain_range" : DomainRangeConstraint,
         "language_model" : LanguageModelPrior,
-        "multi_discrete" : MultiDiscreteConstraint
+        "multi_discrete" : MultiDiscreteConstraint,
+        "exploration" : Exploration
     }
 
     count_constraints = config_prior.pop("count_constraints", False)
@@ -1337,3 +1339,27 @@ class MultiDiscreteConstraint(Constraint):
         if self.ordered:
             message.append(indent + "action_dim in each action branch must be ascending.")
         return "\n".join(message)
+
+class Exploration(Prior):
+    """
+    Class that can encourage exploration of unseen states.
+    """
+
+    def __init__(self, library, alpha=1.0):
+        Prior.__init__(self, library)
+        self.alpha = alpha
+
+    def validate(self):
+        return None
+
+    def __call__(self, actions, parent, sibling, dangling):
+        batch_size = actions.shape[0]
+        prior = np.zeros((batch_size, self.L), dtype=np.float32)
+
+        for i in range(batch_size):
+            actions_to_penalise = Explorer.get_actions_from_program(tuple(actions[i]))
+            if actions_to_penalise is not None:
+                for a, n in actions_to_penalise.items():
+                    penalty = - self.alpha * np.log(1.0 + n)
+                    prior[i, a] = penalty
+        return prior
