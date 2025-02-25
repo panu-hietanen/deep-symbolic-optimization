@@ -5,9 +5,12 @@ from typing import Dict
 from dso.program import from_tokens
 
 class Explorer:
-    """Class to store partial expressions for exploration heuristics."""
+    """Class to store partial expressions for exploration heuristics.
 
-    # Dict of (tuple: int)
+    The Cache is a static nested Dict[tuple, Dict[int, int]] to map an expression to expressions with an
+    extra symbol along with their frequency.
+    i.e. [add, mul, x1] will store as {(add, mul): (x1, 1)}. Of course these will be mapped to the library.
+    """
     _cache: Dict[tuple, Dict[int, int]] = {}
 
     @classmethod
@@ -19,11 +22,6 @@ class Explorer:
     def get(cls, item):
         """Get the program by index."""
         return cls._cache[item]
-
-    @classmethod
-    def set(cls, key, value):
-        """Set the program by index."""
-        cls._cache[key] = value
 
     @classmethod
     def increment(cls, key):
