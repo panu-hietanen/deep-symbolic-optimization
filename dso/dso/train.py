@@ -255,9 +255,9 @@ class SyncTrainer(Trainer):
         if self.verbose:
             print("-- SYNC TRAINING STEP START --")
 
-        # params = self.get_params()
-        # for _ in range(self.n_cores_task):
-        #     self.task_queue.put({"type": "update_params", "params": params})
+        params = self.get_params()
+        for _ in range(self.n_cores_task):
+            self.task_queue.put({"type": "update_params", "params": params})
 
         # Request batch samples from workers
         for _ in range(self.n_cores_task):
