@@ -1363,4 +1363,4 @@ class Exploration(Prior):
                 for a, n in actions_to_penalise.items():
                     penalty = - self.alpha * np.log(1.0 + n)
                     prior[i, a] = penalty
-        return np.clip(prior, -5, 0)
+        return np.clip(prior, -5, None)

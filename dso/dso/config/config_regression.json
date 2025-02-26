@@ -144,7 +144,7 @@
       },
      "exploration" : {
          "on" : true,
-         "alpha" : 1.0
+         "alpha" : 0.2
      }
    }
 }
