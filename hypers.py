@@ -169,21 +169,45 @@ def main():
     learning_rates = [5e-5, 1e-4, 5e-4]
     entropy_weights = [0.01, 0.03, 0.1]
 
-    params = [learning_rates, entropy_weights]
+    param_dicts = [
+        {"lr": lr, "ew": ew}
+        for lr, ew in itertools.product(learning_rates, entropy_weights)
+    ]
+
+    config_mapping = {
+        'lr': 'policy_optimizer',
+        'ew': 'policy_optimizer',
+        'eg': 'policy_optimizer',
+        'batch_size': 'training',
+        'epsilon': 'training',
+        'alpha_train': 'training',
+    }
+
+    param_mapping = {
+        'lr': 'learning_rate',
+        'ew': 'entropy_weight',
+        'eg': 'entropy_gamma',
+        'batch_size': 'batch_size',
+        'epsilon': 'epsilon',
+        'alpha_train': 'alpha',
+    }
 
     summaries = []
 
-    for lr, ew in itertools.product(*params):
+    for params in param_dicts:
             config_mod = copy.deepcopy(config)
 
-            config_mod["policy_optimizer"]["learning_rate"] = lr
-            config_mod["policy_optimizer"]["entropy_weight"] = ew
+            exp_suffix = ""
+            for param in params:
+                config_mod[config_mapping[param]][param_mapping[param]] = params[param]
+                exp_suffix += f"{param}_{params[param]}_"
+            exp_suffix = exp_suffix[:-1]
 
             config_mod, runs, n_cores_task = clean_config(config_mod)
             # Adjust run directory to keep results separate
             # e.g. append a suffix with the hyperparams
             # Here we incorporate them into the 'exp_name'
-            exp_suffix = f"lr_{lr}_ew_{ew}"
+
 
             if config_mod["experiment"].get("exp_name") is not None:
                 config_mod["experiment"]["exp_name"] += "_" + exp_suffix
@@ -191,8 +215,9 @@ def main():
                 config_mod["experiment"]["exp_name"] = exp_suffix
 
             config_mod["experiment"]["exp_name"] += "_" + config_mod["experiment"]["timestamp"]
+            config_mod["experiment"]["logdir"] = "./log_hypers"
 
-            print(f"\n=== Running grid search with lr={lr}, entropy_weight={ew} ===")
+            print(f"\n=== Running grid search with {params} ===")
 
 
             summary_path = run_experiment(config_mod, runs, n_cores_task)
