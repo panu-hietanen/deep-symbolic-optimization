@@ -17,6 +17,29 @@ from dso.logeval import LogEval
 from dso.config import load_config
 from dso.utils import safe_update_summary
 
+PARAM_MAPPING = {
+    'lr': 'learning_rate',
+    'ew': 'entropy_weight',
+    'eg': 'entropy_gamma',
+    'batch_size': 'batch_size',
+    'epsilon': 'epsilon',
+    'alpha_train': 'alpha',
+    'clip': 'ppo_clip_ratio',
+    'iters': 'ppo_n_iters',
+    'mb': 'ppo_n_mb'
+}
+
+CONFIG_MAPPING = {
+    'lr': 'policy_optimizer',
+    'ew': 'policy_optimizer',
+    'eg': 'policy_optimizer',
+    'clip': 'policy_optimizer',
+    'iters': 'policy_optimizer',
+    'mb': 'policy_optimizer',
+    'batch_size': 'training',
+    'epsilon': 'training',
+    'alpha_train': 'training',
+}
 
 def train_dso(config):
     """Trains DSO and returns dict of reward, expression, and traversal"""
@@ -162,7 +185,7 @@ def run_experiment(config, runs, n_cores_task):
     print("== POST-PROCESS END ===================")
     return summary_path
 
-def grid_search(config, param_dicts, param_mapping, config_mapping):
+def grid_search(config, param_dicts):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
@@ -171,7 +194,7 @@ def grid_search(config, param_dicts, param_mapping, config_mapping):
 
             exp_suffix = ""
             for param in params:
-                config_mod[config_mapping[param]][param_mapping[param]] = params[param]
+                config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]] = params[param]
                 exp_suffix += f"{param}-{params[param]}_"
                 if param in ['clip', 'iters', 'mb']:
                     config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
@@ -210,8 +233,16 @@ def main(save_results):
     with open(config_path, encoding='utf-8') as f:
         config = json.load(f)
 
+    # Training Parameters
+    batch_sizes = [500, 1000, 5000]
+    epsilons = [0.01, 0.05, 0.1]
+
+    # Vanilla PG Parameters
     learning_rates = [5e-5, 1e-4, 5e-4]
     entropy_weights = [0.01, 0.03, 0.1]
+    entropy_gammas = [0.5, 0.75, 0.99]
+
+    # PPO Parameters
     ppo_clip_ratio  = [0.1, 0.2, 0.3]
     ppo_n_iters = [5, 10, 15]
     ppo_n_mb = [1, 4, 8]
@@ -227,31 +258,7 @@ def main(save_results):
     #     for lr in learning_rates
     # ]
 
-    param_mapping = {
-        'lr': 'learning_rate',
-        'ew': 'entropy_weight',
-        'eg': 'entropy_gamma',
-        'batch_size': 'batch_size',
-        'epsilon': 'epsilon',
-        'alpha_train': 'alpha',
-        'clip': 'ppo_clip_ratio',
-        'iters': 'ppo_n_iters',
-        'mb': 'ppo_n_mb'
-    }
-
-    config_mapping = {
-        'lr': 'policy_optimizer',
-        'ew': 'policy_optimizer',
-        'eg': 'policy_optimizer',
-        'clip': 'policy_optimizer',
-        'iters': 'policy_optimizer',
-        'mb': 'policy_optimizer',
-        'batch_size': 'training',
-        'epsilon': 'training',
-        'alpha_train': 'training',
-    }
-
-    summaries, timestamp = grid_search(config, param_dicts, param_mapping, config_mapping)
+    summaries, timestamp = grid_search(config, param_dicts)
 
     all_results = pd.concat(summaries, ignore_index=True)
     all_results_sorted = all_results.sort_values(by="t", ascending=True)
