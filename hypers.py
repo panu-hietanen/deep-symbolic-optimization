@@ -168,16 +168,24 @@ def main():
 
     learning_rates = [5e-5, 1e-4, 5e-4]
     entropy_weights = [0.01, 0.03, 0.1]
+    ppo_clip_ratio  = [0.1, 0.2, 0.3]
+    ppo_n_iters = [5, 7, 10, 12, 15]
+    ppo_n_mb = [1, 3, 5, 7, 9]
+
+
 
     param_dicts = [
-        {"lr": lr, "ew": ew}
-        for lr, ew in itertools.product(learning_rates, entropy_weights)
+        {"lr": lr, "ew": ew, "clip": clip, "iters": iters, "mb": mb}
+        for lr, ew, clip, iters, mb in itertools.product(learning_rates, entropy_weights, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
     ]
 
     config_mapping = {
         'lr': 'policy_optimizer',
         'ew': 'policy_optimizer',
         'eg': 'policy_optimizer',
+        'clip': 'policy_optimizer',
+        'iters': 'policy_optimizer',
+        'mb': 'policy_optimizer',
         'batch_size': 'training',
         'epsilon': 'training',
         'alpha_train': 'training',
@@ -190,9 +198,14 @@ def main():
         'batch_size': 'batch_size',
         'epsilon': 'epsilon',
         'alpha_train': 'alpha',
+        'clip': 'ppo_clip_ratio',
+        'iters': 'ppo_n_iters',
+        'mb': 'ppo_n_mb'
     }
 
     summaries = []
+
+    print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
 
     for params in param_dicts:
             config_mod = copy.deepcopy(config)
@@ -200,7 +213,9 @@ def main():
             exp_suffix = ""
             for param in params:
                 config_mod[config_mapping[param]][param_mapping[param]] = params[param]
-                exp_suffix += f"{param}_{params[param]}_"
+                exp_suffix += f"{param}-{params[param]}_"
+                if param in ['clip', 'iters', 'mb']:
+                    config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
             exp_suffix = exp_suffix[:-1]
 
             config_mod, runs, n_cores_task = clean_config(config_mod)
