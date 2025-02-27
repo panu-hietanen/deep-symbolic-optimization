@@ -7,6 +7,7 @@ import multiprocessing
 from copy import deepcopy
 from datetime import datetime
 import commentjson as json
+import numpy as np
 import pandas as pd
 import copy
 import itertools
@@ -161,52 +162,10 @@ def run_experiment(config, runs, n_cores_task):
     print("== POST-PROCESS END ===================")
     return summary_path
 
-def main():
-    config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    with open(config_path, encoding='utf-8') as f:
-        config = json.load(f)
-
-    learning_rates = [5e-5, 1e-4, 5e-4]
-    entropy_weights = [0.01, 0.03, 0.1]
-    ppo_clip_ratio  = [0.1, 0.2, 0.3]
-    ppo_n_iters = [5, 7, 10, 12, 15]
-    ppo_n_mb = [1, 3, 5, 7, 9]
-
-
-
-    param_dicts = [
-        {"lr": lr, "ew": ew, "clip": clip, "iters": iters, "mb": mb}
-        for lr, ew, clip, iters, mb in itertools.product(learning_rates, entropy_weights, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
-    ]
-
-    config_mapping = {
-        'lr': 'policy_optimizer',
-        'ew': 'policy_optimizer',
-        'eg': 'policy_optimizer',
-        'clip': 'policy_optimizer',
-        'iters': 'policy_optimizer',
-        'mb': 'policy_optimizer',
-        'batch_size': 'training',
-        'epsilon': 'training',
-        'alpha_train': 'training',
-    }
-
-    param_mapping = {
-        'lr': 'learning_rate',
-        'ew': 'entropy_weight',
-        'eg': 'entropy_gamma',
-        'batch_size': 'batch_size',
-        'epsilon': 'epsilon',
-        'alpha_train': 'alpha',
-        'clip': 'ppo_clip_ratio',
-        'iters': 'ppo_n_iters',
-        'mb': 'ppo_n_mb'
-    }
-
+def grid_search(config, param_dicts, param_mapping, config_mapping):
     summaries = []
-
+    timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
-
     for params in param_dicts:
             config_mod = copy.deepcopy(config)
 
@@ -223,27 +182,87 @@ def main():
             # e.g. append a suffix with the hyperparams
             # Here we incorporate them into the 'exp_name'
 
+            timestamp = config_mod["experiment"]["timestamp"]
 
             if config_mod["experiment"].get("exp_name") is not None:
                 config_mod["experiment"]["exp_name"] += "_" + exp_suffix
             else:
                 config_mod["experiment"]["exp_name"] = exp_suffix
 
-            config_mod["experiment"]["exp_name"] += "_" + config_mod["experiment"]["timestamp"]
+            config_mod["experiment"]["exp_name"] += "_" + timestamp
             config_mod["experiment"]["logdir"] = "./log_hypers"
 
             print(f"\n=== Running grid search with {params} ===")
 
-
             summary_path = run_experiment(config_mod, runs, n_cores_task)
-            summaries.append(summary_path)
 
+            parameters = json.dumps(params)
             summary = pd.read_csv(summary_path)
+
+            summary["params_json"] = parameters
+            summaries.append(summary)
             print(summary)
 
-    print(summaries)
+    return summaries, timestamp
 
+def main(save_results):
+    config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
+    with open(config_path, encoding='utf-8') as f:
+        config = json.load(f)
+
+    learning_rates = [5e-5, 1e-4, 5e-4]
+    entropy_weights = [0.01, 0.03, 0.1]
+    ppo_clip_ratio  = [0.1, 0.2, 0.3]
+    ppo_n_iters = [5, 10, 15]
+    ppo_n_mb = [1, 4, 8]
+
+    param_dicts = [
+        {"lr": lr, "ew": ew, "clip": clip, "iters": iters, "mb": mb}
+        for lr, ew, clip, iters, mb in itertools.product(learning_rates, entropy_weights, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
+    ]
+
+    # For testing
+    # param_dicts = [
+    #     {"lr": lr}
+    #     for lr in learning_rates
+    # ]
+
+    param_mapping = {
+        'lr': 'learning_rate',
+        'ew': 'entropy_weight',
+        'eg': 'entropy_gamma',
+        'batch_size': 'batch_size',
+        'epsilon': 'epsilon',
+        'alpha_train': 'alpha',
+        'clip': 'ppo_clip_ratio',
+        'iters': 'ppo_n_iters',
+        'mb': 'ppo_n_mb'
+    }
+
+    config_mapping = {
+        'lr': 'policy_optimizer',
+        'ew': 'policy_optimizer',
+        'eg': 'policy_optimizer',
+        'clip': 'policy_optimizer',
+        'iters': 'policy_optimizer',
+        'mb': 'policy_optimizer',
+        'batch_size': 'training',
+        'epsilon': 'training',
+        'alpha_train': 'training',
+    }
+
+    summaries, timestamp = grid_search(config, param_dicts, param_mapping, config_mapping)
+
+    all_results = pd.concat(summaries, ignore_index=True)
+    all_results_sorted = all_results.sort_values(by="t", ascending=True)
+
+    print(all_results_sorted)
+    if save_results:
+        folder = f'./log/hypers_{timestamp}'
+        os.makedirs(folder, exist_ok=True)
+        all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
 
 if __name__ == "__main__":
-    main()
+    save_results = True
+    main(save_results)
 
