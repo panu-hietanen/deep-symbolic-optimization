@@ -228,10 +228,59 @@ def grid_search(config, param_dicts):
 
     return summaries, timestamp
 
-def main(save_results):
-    config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    with open(config_path, encoding='utf-8') as f:
-        config = json.load(f)
+def random_search(config, param_dicts, trials):
+    summaries = []
+    timestamp = None
+    print(f"INFO: RUNNING {trials} EXPERIMENTS")
+    i = 0
+    param_perms = np.random.choice(param_dicts, trials, replace=False)
+    for params in param_perms:
+        config_mod = copy.deepcopy(config)
+
+        exp_suffix = ""
+        for param in params:
+            config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]] = params[param]
+            exp_suffix += f"{param}-{params[param]}_"
+            if param in ['clip', 'iters', 'mb']:
+                config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
+        exp_suffix = exp_suffix[:-1]
+
+        config_mod, runs, n_cores_task = clean_config(config_mod)
+        # Adjust run directory to keep results separate
+        # e.g. append a suffix with the hyperparams
+        # Here we incorporate them into the 'exp_name'
+
+        timestamp = config_mod["experiment"]["timestamp"]
+
+        if config_mod["experiment"].get("exp_name") is not None:
+            config_mod["experiment"]["exp_name"] += "_" + exp_suffix
+        else:
+            config_mod["experiment"]["exp_name"] = exp_suffix
+
+        config_mod["experiment"]["exp_name"] += "_" + timestamp
+        config_mod["experiment"]["logdir"] = "./log_hypers"
+
+        print(f"\n=== Running grid search with {params} ===")
+
+        summary_path = run_experiment(config_mod, runs, n_cores_task)
+
+        parameters = json.dumps(params)
+        summary = pd.read_csv(summary_path)
+
+        summary["params_json"] = parameters
+        summaries.append(summary)
+        print(summary)
+        i += 1
+
+    return summaries, timestamp
+
+
+def main(save_results=False, config_path='', random=False, trials=None):
+    try:
+        with open(config_path, encoding='utf-8') as f:
+            config = json.load(f)
+    except Exception as e:
+        raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Training Parameters
     batch_sizes = [500, 1000, 5000]
@@ -248,8 +297,9 @@ def main(save_results):
     ppo_n_mb = [1, 4, 8]
 
     param_dicts = [
-        {"lr": lr, "ew": ew, "clip": clip, "iters": iters, "mb": mb}
-        for lr, ew, clip, iters, mb in itertools.product(learning_rates, entropy_weights, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
+        {"lr": lr, "ew": ew, "eg": eg, "clip": clip, "iters": iters, "mb": mb}
+        for lr, ew, eg, clip, iters, mb in
+        itertools.product(learning_rates, entropy_weights, entropy_gammas, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
     ]
 
     # For testing
@@ -258,7 +308,12 @@ def main(save_results):
     #     for lr in learning_rates
     # ]
 
-    summaries, timestamp = grid_search(config, param_dicts)
+    if random:
+        if trials is None:
+            raise ValueError("Must provide trials when random is True.")
+        summaries, timestamp = random_search(config, param_dicts, trials)
+    else:
+        summaries, timestamp = grid_search(config, param_dicts)
 
     all_results = pd.concat(summaries, ignore_index=True)
     all_results_sorted = all_results.sort_values(by="t", ascending=True)
@@ -271,5 +326,8 @@ def main(save_results):
 
 if __name__ == "__main__":
     save_results = True
-    main(save_results)
+    config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
+    random = False
+    trials = 10
+    main(save_results, config_path, random, trials)
 
