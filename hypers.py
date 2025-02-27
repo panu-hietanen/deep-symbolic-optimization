@@ -8,6 +8,8 @@ from copy import deepcopy
 from datetime import datetime
 import commentjson as json
 import pandas as pd
+import copy
+import itertools
 
 from dso import DeepSymbolicOptimizer
 from dso.logeval import LogEval
@@ -164,10 +166,44 @@ def main():
     with open(config_path, encoding='utf-8') as f:
         config = json.load(f)
 
-    config, runs, n_cores_task = clean_config(config)
-    summary_path = run_experiment(config, runs, n_cores_task)
-    summary = pd.read_csv(summary_path)
-    print(summary)
+    learning_rates = [5e-5, 1e-4, 5e-4]
+    entropy_weights = [0.01, 0.03, 0.1]
+
+    params = [learning_rates, entropy_weights]
+
+    summaries = []
+
+    for lr, ew in itertools.product(*params):
+            config_mod = copy.deepcopy(config)
+
+            config_mod["policy_optimizer"]["learning_rate"] = lr
+            config_mod["policy_optimizer"]["entropy_weight"] = ew
+
+            config_mod, runs, n_cores_task = clean_config(config_mod)
+            # Adjust run directory to keep results separate
+            # e.g. append a suffix with the hyperparams
+            # Here we incorporate them into the 'exp_name'
+            exp_suffix = f"lr_{lr}_ew_{ew}"
+
+            if config_mod["experiment"].get("exp_name") is not None:
+                config_mod["experiment"]["exp_name"] += "_" + exp_suffix
+            else:
+                config_mod["experiment"]["exp_name"] = exp_suffix
+
+            config_mod["experiment"]["exp_name"] += "_" + config_mod["experiment"]["timestamp"]
+
+            print(f"\n=== Running grid search with lr={lr}, entropy_weight={ew} ===")
+
+
+            summary_path = run_experiment(config_mod, runs, n_cores_task)
+            summaries.append(summary_path)
+
+            summary = pd.read_csv(summary_path)
+            print(summary)
+
+    print(summaries)
+
 
 if __name__ == "__main__":
     main()
+
