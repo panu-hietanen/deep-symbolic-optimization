@@ -225,6 +225,32 @@ def benchmark(config, benchmarks, runs=1):
 
     return summaries, timestamp
 
+def postprocess(summaries, timestamp, save_results=False):
+    all_results = pd.concat(summaries, ignore_index=True)
+    all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
+
+    grouped = all_results_sorted.groupby("dataset")
+
+    summary_df = grouped.agg(
+        success_rate=("success", "mean"),
+        avg_time=("t", "mean"),
+        total_runs=("success", "count"),
+        success_count=("success", "sum"),
+    ).reset_index()
+
+    summary_df["failure_count"] = summary_df["total_runs"] - summary_df["success_count"]
+    summary_df["success_rate"] = 100.0 * summary_df["success_rate"]
+    summary_df["std_time"] = grouped["t"].std().values
+
+    print("== RESULTS ==")
+    print(summary_df)
+    if save_results:
+        folder = f'./log/bench_{timestamp}'
+        os.makedirs(folder, exist_ok=True)
+        print(f"Saving results to {folder}...")
+        all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
+        summary_df.to_csv(f'{folder}/summary.csv', index=False)
+
 def main(save_results=False, config_path='', runs=1):
     try:
         with open(config_path, encoding='utf-8') as f:
@@ -233,24 +259,15 @@ def main(save_results=False, config_path='', runs=1):
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Benchmarks
-    benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    # benchmarks = ['Nguyen-1']
+    # benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
+    benchmarks = ['Nguyen-1']
 
     start = time.time()
     summaries, timestamp = benchmark(config, benchmarks, runs)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
-    all_results = pd.concat(summaries, ignore_index=True)
-    all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
-
-    print("== RESULTS ==")
-    print(all_results_sorted)
-    if save_results:
-        folder = f'./log/bench_{timestamp}'
-        os.makedirs(folder, exist_ok=True)
-        print(f"Saving results to {folder}...")
-        all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
+    postprocess(summaries, timestamp, save_results)
 
 if __name__ == "__main__":
     save_results = True
