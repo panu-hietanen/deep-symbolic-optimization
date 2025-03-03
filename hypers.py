@@ -26,7 +26,8 @@ PARAM_MAPPING = {
     'alpha_train': 'alpha',
     'clip': 'ppo_clip_ratio',
     'iters': 'ppo_n_iters',
-    'mb': 'ppo_n_mb'
+    'mb': 'ppo_n_mb',
+    'alpha_explore': 'exploration'
 }
 
 CONFIG_MAPPING = {
@@ -39,6 +40,11 @@ CONFIG_MAPPING = {
     'batch_size': 'training',
     'epsilon': 'training',
     'alpha_train': 'training',
+    'alpha_explore': 'prior'
+}
+
+SUBCONFIG_MAPPING = {
+    'alpha_explore': 'alpha',
 }
 
 def train_dso(config):
@@ -194,7 +200,14 @@ def grid_search(config, param_dicts):
 
         exp_suffix = ""
         for param in params:
-            config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]] = params[param]
+            if isinstance(config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]], str):
+                config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]] = params[param]
+            elif isinstance(config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]], dict):
+                config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]][SUBCONFIG_MAPPING[param]] \
+                    = params[param]
+            else:
+                raise KeyError(f'Error: Please check the format of config dict for parameter {param}.')
+
             exp_suffix += f"{param}-{params[param]}_"
             if param in ['clip', 'iters', 'mb']:
                 config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
@@ -251,16 +264,19 @@ def main(save_results=False, config_path='', random=False, trials=None):
     ppo_n_iters = [5, 10, 15]
     ppo_n_mb = [1, 4, 8]
 
-    param_dicts = [
-        {"lr": lr, "ew": ew, "eg": eg, "clip": clip, "iters": iters, "mb": mb}
-        for lr, ew, eg, clip, iters, mb in
-        itertools.product(learning_rates, entropy_weights, entropy_gammas, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
-    ]
+    # Exlore Parameters
+    alpha_explore = [0, 0.001, 0.01, 0.1, 0.2, 0.5, 0.7, 1, 5, 10]
+
+    # param_dicts = [
+    #     {"lr": lr, "ew": ew, "eg": eg, "clip": clip, "iters": iters, "mb": mb}
+    #     for lr, ew, eg, clip, iters, mb in
+    #     itertools.product(learning_rates, entropy_weights, entropy_gammas, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
+    # ]
 
     # For testing
     param_dicts = [
-        {"lr": lr}
-        for lr in learning_rates
+        {"alpha_explore": at}
+        for at in alpha_explore
     ]
 
     start = time.time()
