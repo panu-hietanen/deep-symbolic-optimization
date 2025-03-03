@@ -189,52 +189,7 @@ def grid_search(config, param_dicts):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
-    for params in param_dicts:
-            config_mod = copy.deepcopy(config)
-
-            exp_suffix = ""
-            for param in params:
-                config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]] = params[param]
-                exp_suffix += f"{param}-{params[param]}_"
-                if param in ['clip', 'iters', 'mb']:
-                    config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
-            exp_suffix = exp_suffix[:-1]
-
-            config_mod, runs, n_cores_task = clean_config(config_mod)
-            # Adjust run directory to keep results separate
-            # e.g. append a suffix with the hyperparams
-            # Here we incorporate them into the 'exp_name'
-
-            timestamp = config_mod["experiment"]["timestamp"]
-
-            if config_mod["experiment"].get("exp_name") is not None:
-                config_mod["experiment"]["exp_name"] += "_" + exp_suffix
-            else:
-                config_mod["experiment"]["exp_name"] = exp_suffix
-
-            config_mod["experiment"]["exp_name"] += "_" + timestamp
-            config_mod["experiment"]["logdir"] = "./log_hypers"
-
-            print(f"\n=== Running grid search with {params} ===")
-
-            summary_path = run_experiment(config_mod, runs, n_cores_task)
-
-            parameters = json.dumps(params)
-            summary = pd.read_csv(summary_path)
-
-            summary["params_json"] = parameters
-            summaries.append(summary)
-            print(summary)
-
-    return summaries, timestamp
-
-def random_search(config, param_dicts, trials):
-    summaries = []
-    timestamp = None
-    print(f"INFO: RUNNING {trials} EXPERIMENTS")
-    i = 0
-    param_perms = np.random.choice(param_dicts, trials, replace=False)
-    for params in param_perms:
+    for i, params in enumerate(param_dicts):
         config_mod = copy.deepcopy(config)
 
         exp_suffix = ""
@@ -269,11 +224,11 @@ def random_search(config, param_dicts, trials):
 
         summary["params_json"] = parameters
         summaries.append(summary)
+        t = summary["t"]
+        print(f"=== FINISHED ITERATION {i} in {float(t): .4f} seconds===")
         print(summary)
-        i += 1
 
     return summaries, timestamp
-
 
 def main(save_results=False, config_path='', random=False, trials=None):
     try:
@@ -303,17 +258,21 @@ def main(save_results=False, config_path='', random=False, trials=None):
     ]
 
     # For testing
-    # param_dicts = [
-    #     {"lr": lr}
-    #     for lr in learning_rates
-    # ]
+    param_dicts = [
+        {"lr": lr}
+        for lr in learning_rates
+    ]
 
+    start = time.time()
     if random:
         if trials is None:
             raise ValueError("Must provide trials when random is True.")
-        summaries, timestamp = random_search(config, param_dicts, trials)
+        param_dicts = np.random.choice(param_dicts, trials, replace=False)
+        summaries, timestamp = grid_search(config, param_dicts)
     else:
         summaries, timestamp = grid_search(config, param_dicts)
+    end = time.time()
+    print(f"Time taken to run search: {end - start: .4f} seconds")
 
     all_results = pd.concat(summaries, ignore_index=True)
     all_results_sorted = all_results.sort_values(by="t", ascending=True)
@@ -322,6 +281,7 @@ def main(save_results=False, config_path='', random=False, trials=None):
     if save_results:
         folder = f'./log/hypers_{timestamp}'
         os.makedirs(folder, exist_ok=True)
+        print(f"Saving results to {folder}...")
         all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
 
 if __name__ == "__main__":
