@@ -230,6 +230,17 @@ def grid_search(config, param_dicts):
 
     return summaries, timestamp
 
+def postprocess(summaries, timestamp, save_results=False):
+    all_results = pd.concat(summaries, ignore_index=True)
+    all_results_sorted = all_results.sort_values(by="t", ascending=True)
+
+    print(all_results_sorted)
+    if save_results:
+        folder = f'./log/hypers_{timestamp}'
+        os.makedirs(folder, exist_ok=True)
+        print(f"Saving results to {folder}...")
+        all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
+
 def main(save_results=False, config_path='', random=False, trials=None):
     try:
         with open(config_path, encoding='utf-8') as f:
@@ -274,15 +285,7 @@ def main(save_results=False, config_path='', random=False, trials=None):
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
-    all_results = pd.concat(summaries, ignore_index=True)
-    all_results_sorted = all_results.sort_values(by="t", ascending=True)
-
-    print(all_results_sorted)
-    if save_results:
-        folder = f'./log/hypers_{timestamp}'
-        os.makedirs(folder, exist_ok=True)
-        print(f"Saving results to {folder}...")
-        all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
+    postprocess(summaries, timestamp, save_results)
 
 if __name__ == "__main__":
     save_results = True
