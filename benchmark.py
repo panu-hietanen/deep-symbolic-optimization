@@ -188,12 +188,13 @@ def run_experiment(config, runs, n_cores_task):
 def benchmark(config, benchmarks, runs=1):
     summaries = []
     timestamp = None
-    print(f"INFO: RUNNING {len(benchmarks)} EXPERIMENTS")
+    print(f"INFO: RUNNING {len(benchmarks)} EXPERIMENTS {runs} TIMES")
     for i, benchmark in enumerate(benchmarks):
-        for j in range(runs):
+        print(f"\n=== Dataset {benchmark} ===")
+        for run in range(runs):
             config_mod = copy.deepcopy(config)
 
-            exp_suffix = benchmark
+            exp_suffix = benchmark + f"_{run}"
 
             config_mod["task"]["dataset"] = benchmark
 
@@ -212,16 +213,17 @@ def benchmark(config, benchmarks, runs=1):
             config_mod["experiment"]["exp_name"] += "_" + timestamp
             config_mod["experiment"]["logdir"] = "./log_hypers"
 
-            print(f"\n=== Running grid search on dataset {benchmark} ===")
+            print(f"\n=== Run {run}===")
 
             summary_path = run_experiment(config_mod, runs, n_cores_task)
 
             summary = pd.read_csv(summary_path)
 
             summary["dataset"] = benchmark
+            summary["run"] = run
             summaries.append(summary)
             t = summary["t"]
-            print(f"=== FINISHED ITERATION {i} in {float(t): .4f} seconds===")
+            print(f"=== FINISHED RUN {run} in {float(t): .4f} seconds===")
             print(summary)
 
     return summaries, timestamp
