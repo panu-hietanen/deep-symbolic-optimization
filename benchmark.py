@@ -185,7 +185,7 @@ def run_experiment(config, runs, n_cores_task):
     print("== POST-PROCESS END ===================")
     return summary_path
 
-def benchmark(config, benchmarks, runs=0):
+def benchmark(config, benchmarks, runs=1):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(benchmarks)} EXPERIMENTS")
@@ -226,7 +226,7 @@ def benchmark(config, benchmarks, runs=0):
 
     return summaries, timestamp
 
-def main(save_results=False, config_path=''):
+def main(save_results=False, config_path='', runs=1):
     try:
         with open(config_path, encoding='utf-8') as f:
             config = json.load(f)
@@ -238,7 +238,7 @@ def main(save_results=False, config_path=''):
     benchmarks = ['Nguyen-1']
 
     start = time.time()
-    summaries, timestamp = benchmark(config, benchmarks)
+    summaries, timestamp = benchmark(config, benchmarks, runs)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
@@ -256,5 +256,6 @@ def main(save_results=False, config_path=''):
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    main(save_results, config_path)
+    runs = 1
+    main(save_results, config_path, runs)
 
