@@ -185,46 +185,43 @@ def run_experiment(config, runs, n_cores_task):
     print("== POST-PROCESS END ===================")
     return summary_path
 
-def benchmark(config, benchmarks, b_runs=1):
+def benchmark(config, benchmarks, runs=1):
     summaries = []
     timestamp = None
-    print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {b_runs} TIMES")
+    print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     for i, benchmark in enumerate(benchmarks):
         print(f"\n=== Dataset {benchmark} ===")
-        for b_run in range(b_runs):
-            config_mod = copy.deepcopy(config)
+        config_mod = copy.deepcopy(config)
 
-            exp_suffix = benchmark + f"_{b_run}"
+        exp_suffix = benchmark
 
-            config_mod["task"]["dataset"] = benchmark
+        config_mod["task"]["dataset"] = benchmark
 
-            config_mod, runs, n_cores_task = clean_config(config_mod)
-            # Adjust run directory to keep results separate
-            # e.g. append a suffix with the hyperparams
-            # Here we incorporate them into the 'exp_name'
+        config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs)
+        # Adjust run directory to keep results separate
+        # e.g. append a suffix with the hyperparams
+        # Here we incorporate them into the 'exp_name'
 
-            timestamp = config_mod["experiment"]["timestamp"]
+        timestamp = config_mod["experiment"]["timestamp"]
 
-            if config_mod["experiment"].get("exp_name") is not None:
-                config_mod["experiment"]["exp_name"] += "_" + exp_suffix
-            else:
-                config_mod["experiment"]["exp_name"] = exp_suffix
+        if config_mod["experiment"].get("exp_name") is not None:
+            config_mod["experiment"]["exp_name"] += "_" + exp_suffix
+        else:
+            config_mod["experiment"]["exp_name"] = exp_suffix
 
-            config_mod["experiment"]["exp_name"] += "_" + timestamp
-            config_mod["experiment"]["logdir"] = "./log_hypers"
+        config_mod["experiment"]["exp_name"] += "_" + timestamp
+        config_mod["experiment"]["logdir"] = "./log_hypers"
 
-            print(f"\n=== Run {b_run} ===")
+        start = time.time()
+        summary_path = run_experiment(config_mod, runs, n_cores_task)
+        end = time.time()
 
-            summary_path = run_experiment(config_mod, runs, n_cores_task)
+        summary = pd.read_csv(summary_path)
 
-            summary = pd.read_csv(summary_path)
-
-            summary["dataset"] = benchmark
-            summary["run"] = b_run
-            summaries.append(summary)
-            t = summary["t"]
-            print(f"=== FINISHED RUN {b_run} in {float(t): .4f} seconds===")
-            print(summary)
+        summary["dataset"] = benchmark
+        summaries.append(summary)
+        print(f"=== FINISHED BENCHMARK {benchmark} IN {end - start: .4f} SECONDS===")
+        print(summary)
 
     return summaries, timestamp
 
@@ -250,7 +247,7 @@ def main(save_results=False, config_path='', runs=1):
     print("== RESULTS ==")
     print(all_results_sorted)
     if save_results:
-        folder = f'./log/hypers_{timestamp}'
+        folder = f'./log/bench_{timestamp}'
         os.makedirs(folder, exist_ok=True)
         print(f"Saving results to {folder}...")
         all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
@@ -258,6 +255,6 @@ def main(save_results=False, config_path='', runs=1):
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 1
+    runs = 2
     main(save_results, config_path, runs)
 
