@@ -1354,9 +1354,6 @@ class Exploration(Prior):
 
         Explorer.set_exploration()
 
-    def validate(self):
-        return None
-
     @staticmethod
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))
@@ -1380,3 +1377,8 @@ class Exploration(Prior):
                     penalty = self.penalise(n)
                     prior[i, a] = penalty
         return np.clip(prior, -5, None)
+
+    def validate(self):
+        if self.alpha <= 0:
+            return "Alpha must be positive."
+        return None
