@@ -1345,13 +1345,29 @@ class Exploration(Prior):
     Class that can encourage exploration of unseen states.
     """
 
-    def __init__(self, library, alpha=1.0):
+    def __init__(self, library, method='log', alpha=1.0, beta=0.1, c=1.0):
         Prior.__init__(self, library)
+        self.method = method
         self.alpha = alpha
+        self.beta = beta
+        self.c = c
+
         Explorer.set_exploration()
 
     def validate(self):
         return None
+
+    @staticmethod
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
+
+    def penalise(self, n):
+        if self.method == 'log':
+            return - self.alpha * np.log(1.0 + n)
+        elif self.method == 'sigmoid':
+            return - self.alpha * self.sigmoid(self.beta * (n - self.c))
+        else:
+            raise NotImplementedError(f'Method {self.method} is not implemented.')
 
     def __call__(self, actions, parent, sibling, dangling):
         batch_size = actions.shape[0]
@@ -1361,6 +1377,6 @@ class Exploration(Prior):
             actions_to_penalise = Explorer.get_actions_from_program(tuple(actions[i]))
             if actions_to_penalise is not None:
                 for a, n in actions_to_penalise.items():
-                    penalty = - self.alpha * np.log(1.0 + n)
+                    penalty = self.penalise(n)
                     prior[i, a] = penalty
         return np.clip(prior, -5, None)
