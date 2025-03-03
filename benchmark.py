@@ -185,16 +185,16 @@ def run_experiment(config, runs, n_cores_task):
     print("== POST-PROCESS END ===================")
     return summary_path
 
-def benchmark(config, benchmarks, runs=1):
+def benchmark(config, benchmarks, b_runs=1):
     summaries = []
     timestamp = None
-    print(f"INFO: RUNNING {len(benchmarks)} EXPERIMENTS {runs} TIMES")
+    print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {b_runs} TIMES")
     for i, benchmark in enumerate(benchmarks):
         print(f"\n=== Dataset {benchmark} ===")
-        for run in range(runs):
+        for b_run in range(b_runs):
             config_mod = copy.deepcopy(config)
 
-            exp_suffix = benchmark + f"_{run}"
+            exp_suffix = benchmark + f"_{b_run}"
 
             config_mod["task"]["dataset"] = benchmark
 
@@ -213,17 +213,17 @@ def benchmark(config, benchmarks, runs=1):
             config_mod["experiment"]["exp_name"] += "_" + timestamp
             config_mod["experiment"]["logdir"] = "./log_hypers"
 
-            print(f"\n=== Run {run}===")
+            print(f"\n=== Run {b_run} ===")
 
-            summary_path = run_experiment(config_mod, runs, n_cores_task)
+            summary_path = run_experiment(config_mod, rus, n_cores_task)
 
             summary = pd.read_csv(summary_path)
 
             summary["dataset"] = benchmark
-            summary["run"] = run
+            summary["run"] = b_run
             summaries.append(summary)
             t = summary["t"]
-            print(f"=== FINISHED RUN {run} in {float(t): .4f} seconds===")
+            print(f"=== FINISHED RUN {b_run} in {float(t): .4f} seconds===")
             print(summary)
 
     return summaries, timestamp
@@ -236,8 +236,8 @@ def main(save_results=False, config_path='', runs=1):
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Benchmarks
-    # benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    benchmarks = ['Nguyen-1']
+    benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
+    # benchmarks = ['Nguyen-1']
 
     start = time.time()
     summaries, timestamp = benchmark(config, benchmarks, runs)
@@ -245,7 +245,7 @@ def main(save_results=False, config_path='', runs=1):
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
     all_results = pd.concat(summaries, ignore_index=True)
-    all_results_sorted = all_results.sort_values(by="t", ascending=True)
+    all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
 
     print("== RESULTS ==")
     print(all_results_sorted)
