@@ -241,6 +241,8 @@ def postprocess(summaries, timestamp, save_results=False):
     summary_df["failure_count"] = summary_df["total_runs"] - summary_df["success_count"]
     summary_df["success_rate"] = 100.0 * summary_df["success_rate"]
     summary_df["std_time"] = grouped["t"].std().values
+    summary_df["min_time"] = grouped["t"].min().values
+    summary_df["max_time"] = grouped["t"].max().values
 
     print("== RESULTS ==")
     print(summary_df)
