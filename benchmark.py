@@ -215,7 +215,7 @@ def benchmark(config, benchmarks, b_runs=1):
 
             print(f"\n=== Run {b_run} ===")
 
-            summary_path = run_experiment(config_mod, rus, n_cores_task)
+            summary_path = run_experiment(config_mod, runs, n_cores_task)
 
             summary = pd.read_csv(summary_path)
 
