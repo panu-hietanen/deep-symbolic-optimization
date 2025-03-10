@@ -261,8 +261,8 @@ def main(save_results=False, config_path='', runs=1):
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Benchmarks
-    # benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    benchmarks = ['Nguyen-1']
+    benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
+    # benchmarks = ['Nguyen-1']
 
     start = time.time()
     summaries, timestamp = benchmark(config, benchmarks, runs)

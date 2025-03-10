@@ -27,7 +27,10 @@ PARAM_MAPPING = {
     'clip': 'ppo_clip_ratio',
     'iters': 'ppo_n_iters',
     'mb': 'ppo_n_mb',
-    'alpha_explore': 'exploration'
+    'alpha_explore': 'exploration',
+    'beta_explore': 'exploration',
+    'c_explore': 'exploration',
+    'benchmark': 'dataset'
 }
 
 CONFIG_MAPPING = {
@@ -40,11 +43,16 @@ CONFIG_MAPPING = {
     'batch_size': 'training',
     'epsilon': 'training',
     'alpha_train': 'training',
-    'alpha_explore': 'prior'
+    'alpha_explore': 'prior',
+    'beta_explore': 'prior',
+    'c_explore': 'prior',
+    'benchmark': 'task'
 }
 
 SUBCONFIG_MAPPING = {
     'alpha_explore': 'alpha',
+    'beta_explore': 'beta',
+    'c_explore': 'c',
 }
 
 def train_dso(config):
@@ -261,6 +269,9 @@ def main(save_results=False, config_path='', random=False, trials=None):
     except Exception as e:
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
+    # Benchmarks
+    benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
+
     # Training Parameters
     batch_sizes = [500, 1000, 5000]
     epsilons = [0.01, 0.05, 0.1]
@@ -276,7 +287,9 @@ def main(save_results=False, config_path='', random=False, trials=None):
     ppo_n_mb = [1, 4, 8]
 
     # Exlore Parameters
-    alpha_explore = [0, 0.001, 0.01, 0.1, 0.2, 0.5, 0.7, 1, 5, 10]
+    alpha_explore = [0, 0.001, 0.01, 0.1]
+    beta_explore = [0, 0.001, 0.01]
+    c_explore = [0, 0.001, 0.01]
 
     # param_dicts = [
     #     {"lr": lr, "ew": ew, "eg": eg, "clip": clip, "iters": iters, "mb": mb}
@@ -286,8 +299,9 @@ def main(save_results=False, config_path='', random=False, trials=None):
 
     # For testing
     param_dicts = [
-        {"alpha_explore": at}
-        for at in alpha_explore
+        {"alpha_explore": a, "beta_explore": b, "c_explore": c, "benchmark": bench}
+        for a, b, c, bench in
+        itertools.product(alpha_explore, beta_explore, c_explore, benchmarks)
     ]
 
     start = time.time()

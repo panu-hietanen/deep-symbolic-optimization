@@ -144,7 +144,13 @@
       },
      "exploration" : {
          "on" : true,
-         "alpha" : 0.2
+
+//         "method" : "log",
+         "alpha" : 0.1,
+
+         "method": "sigmoid",
+         "beta" : 0.1,
+         "c" : 0.01
      }
    }
 }
