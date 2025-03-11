@@ -1374,8 +1374,11 @@ class Exploration(Prior):
             actions_to_penalise = Explorer.get_actions_from_program(tuple(actions[i]))
             if actions_to_penalise is not None:
                 for a, n in actions_to_penalise.items():
-                    penalty = self.penalise(n)
-                    prior[i, a] = penalty
+                    try:
+                        penalty = self.penalise(n)
+                        prior[i, a] = penalty
+                    except IndexError:
+                        print(f'Warning: Tried to penalise action {a} for batch {i} but prior has shape {prior.shape}')
         return np.clip(prior, -5, None)
 
     def validate(self):
