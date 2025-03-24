@@ -380,6 +380,13 @@ class SyncTrainer(Trainer):
         for w in self.workers:
             w.join()
 
+        print("CLOSING QUEUES")
+        for q in [self.task_queue, self.result_queue, self.param_queue]:
+            q.close()
+            q.join_thread()
+
+        print("Alive workers:", [w.is_alive() for w in self.workers])
+
     def get_params(self):
         """Get the current parameters of the policy"""
         return self.policy.get_params_numpy(0)

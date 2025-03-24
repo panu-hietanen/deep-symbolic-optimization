@@ -122,8 +122,6 @@ class DeepSymbolicOptimizer():
         while not self.trainer.done:
             result = self.train_one_step()
 
-        self.trainer.close()
-
         return result
 
     def finish(self):
@@ -145,6 +143,18 @@ class DeepSymbolicOptimizer():
         # Save all results available only after all iterations are finished. Also return metrics to be added to the summary file
         results_add = self.logger.save_results(self.pool, self.trainer.nevals)
         result.update(results_add)
+
+        if self.trainer and self.sync:
+            self.trainer.close()
+
+        if self.sess is not None:
+            self.sess.close()
+            self.sess = None
+
+        for q in [getattr(self, attr, None) for attr in ["task_queue", "result_queue", "param_queue"]]:
+            if q is not None:
+                q.close()
+                q.join_thread()
 
         # Close the pool
         if self.pool is not None:
