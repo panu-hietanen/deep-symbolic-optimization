@@ -367,10 +367,18 @@ class SyncTrainer(Trainer):
             self.done = True
 
         # Increment the iteration counter
-        if self.done:
-            for _ in range(self.n_cores_task):
-                self.task_queue.put(None)
         self.iteration += 1
+
+    def close(self):
+        """
+        Close the worker sessions.
+        """
+        print("CLOSING WORKERS:")
+        for _ in range(self.n_cores_task):
+            self.task_queue.put(None)
+
+        for w in self.workers:
+            w.join()
 
     def get_params(self):
         """Get the current parameters of the policy"""

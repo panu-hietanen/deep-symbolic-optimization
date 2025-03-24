@@ -122,6 +122,8 @@ class DeepSymbolicOptimizer():
         while not self.trainer.done:
             result = self.train_one_step()
 
+        self.trainer.close()
+
         return result
 
     def finish(self):
