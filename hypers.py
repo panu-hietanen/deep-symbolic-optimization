@@ -198,7 +198,7 @@ def run_experiment(config, runs, n_cores_task):
     print("== POST-PROCESS END ===================")
     return summary_path
 
-def grid_search(config, param_dicts):
+def grid_search(config, param_dicts, n_cores_task):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
@@ -213,7 +213,7 @@ def grid_search(config, param_dicts):
                 config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
         exp_suffix = exp_suffix[:-1]
 
-        config_mod, runs, n_cores_task = clean_config(config_mod)
+        config_mod, runs, n_cores_task = clean_config(config_mod, n_cores_task=n_cores_task)
         # Adjust run directory to keep results separate
         # e.g. append a suffix with the hyperparams
         # Here we incorporate them into the 'exp_name'
@@ -254,7 +254,7 @@ def postprocess(summaries, timestamp, save_results=False):
         print(f"Saving results to {folder}...")
         all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
 
-def main(save_results=False, config_path='', random=False, trials=None):
+def main(save_results=False, config_path='', random=False, trials=None, n_cores_task=1):
     try:
         with open(config_path, encoding='utf-8') as f:
             config = json.load(f)
@@ -292,9 +292,9 @@ def main(save_results=False, config_path='', random=False, trials=None):
         if trials is None:
             raise ValueError("Must provide trials when random is True.")
         param_dicts = np.random.choice(param_dicts, trials, replace=False)
-        summaries, timestamp = grid_search(config, param_dicts)
+        summaries, timestamp = grid_search(config, param_dicts, n_cores_task)
     else:
-        summaries, timestamp = grid_search(config, param_dicts)
+        summaries, timestamp = grid_search(config, param_dicts, n_cores_task)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
@@ -305,5 +305,6 @@ if __name__ == "__main__":
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
     random = False
     trials = 10
-    main(save_results, config_path, random, trials)
+    n_cores_task = 2
+    main(save_results, config_path, random, trials, n_cores_task)
 
