@@ -1379,6 +1379,8 @@ class Exploration(Prior):
                         prior[i, a] = penalty
                     except IndexError:
                         print(f'Warning: Tried to penalise action {a} for batch {i} but prior has shape {prior.shape}')
+                        print(f'Actions to penalise: {actions_to_penalise}')
+                        print(f'Penalty: {penalty}')
         return np.clip(prior, -5, None)
 
     def validate(self):
