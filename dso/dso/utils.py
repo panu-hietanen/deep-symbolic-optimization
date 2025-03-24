@@ -330,5 +330,10 @@ def make_batch_ph(name : str, n_choices : int):
         batch_ph = Batch(**batch_ph)
     return batch_ph
 
-
-
+def merge_batches(worker_batches):
+    """Merge batches received from worker processes."""
+    all_actions, all_obs, all_priors, all_programs = zip(*worker_batches)
+    return (np.concatenate(all_actions, axis=0),
+            np.concatenate(all_obs, axis=0),
+            np.concatenate(all_priors, axis=0),
+            sum(all_programs, []))

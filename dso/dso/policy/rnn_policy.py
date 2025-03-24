@@ -80,7 +80,7 @@ class RNNPolicy(Policy):
         Initializer for the recurrent cell. Supports 'zeros' and 'var_scale'.
         
     """
-    def __init__(self, sess, prior, state_manager, 
+    def __init__(self, sess, prior, state_manager, worker_id,
                  debug = 0,
                  max_length = 30,
                  action_prob_lowerbound = 0.0,
@@ -101,6 +101,8 @@ class RNNPolicy(Policy):
 
         # Placeholders, computed after instantiating expressions
         self.batch_size = tf.placeholder(dtype=tf.int32, shape=(), name="batch_size")
+
+        self.worker_id = worker_id
 
         # setup model
         self._setup_tf_model(cell, num_layers, num_units, initializer)
@@ -123,7 +125,7 @@ class RNNPolicy(Policy):
         max_length = self.max_length
 
         # Build RNN policy
-        with tf.name_scope("controller"):
+        with tf.name_scope(f"controller{self.worker_id}"):
 
             def make_initializer(name):
                 if name == "zeros":
@@ -222,7 +224,7 @@ class RNNPolicy(Policy):
                 return (finished, next_input, next_cell_state, emit_output, next_loop_state)
 
             # Returns RNN emit outputs TensorArray (i.e. logits), final cell state, and final loop state
-            with tf.variable_scope('policy'):
+            with tf.variable_scope(f'policy{self.worker_id}'):
                 _, _, loop_state = tf.nn.raw_rnn(cell=cell, loop_fn=loop_fn)
                 actions_ta, obs_ta, priors_ta, _, _, _ = loop_state
 
@@ -254,7 +256,7 @@ class RNNPolicy(Policy):
             entropy_gamma = 1.0
         entropy_gamma_decay = np.array([entropy_gamma**t for t in range(self.max_length)], dtype=np.float32)
 
-        with tf.variable_scope('policy', reuse=True):
+        with tf.variable_scope(f'policy{self.worker_id}', reuse=True):
             logits, _ = tf.nn.dynamic_rnn(cell=self.cell,
                                           inputs=self.state_manager.get_tensor_input(B.obs),
                                           sequence_length=B.lengths, # Backpropagates only through sequence length
@@ -439,3 +441,25 @@ class RNNPolicy(Policy):
         logits_bounded = tf.log(probs_bounded)
 
         return logits_bounded
+
+    def get_params(self, worker_id):
+        """Get parameters of this policy."""
+        return tf.trainable_variables(scope=f"policy{worker_id}")
+
+    def get_params_numpy(self, worker_id):
+        """
+        Return a list of np arrays representing the
+        current state of the policy.
+        """
+        variables = self.get_params(worker_id)
+        return self.sess.run(variables)
+
+    def set_params_numpy(self, param_list, worker_id):
+        """
+        Given a list of numpy arrays for each trainable variable, assign them in self.sess.
+        """
+        assign_ops = []
+        variables = self.get_params(worker_id)
+        for v, np_val in zip(variables, param_list):
+            assign_ops.append(v.assign(np_val))
+        self.sess.run(assign_ops)

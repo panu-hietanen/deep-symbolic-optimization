@@ -33,6 +33,7 @@ def make_policy(sess, prior, state_manager, policy_type, **config_policy):
     policy = policy_class(sess,
                           prior,
                           state_manager,
+                          0,
                           **config_policy)
 
     return policy
