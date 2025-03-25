@@ -41,7 +41,7 @@ CONFIG_MAPPING = {
     'alpha_train': 'training',
 }
 
-def train_dso(config):
+def train_dso(config, model):
     """Trains DSO and returns dict of reward, expression, and traversal"""
 
     print("\n== TRAINING SEED {} START ============".format(config["experiment"]["seed"]))
@@ -56,7 +56,6 @@ def train_dso(config):
     '''
 
     # Train the model
-    model = DeepSymbolicOptimizer(deepcopy(config))
     start = time.time()
     result = model.train()
     result["t"] = time.time() - start
@@ -87,7 +86,7 @@ def print_summary(config, runs, messages):
     print(text)
 
 
-def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmark=None, exp_name=None):
+def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmark=None, exp_name=None, time=0):
     """Runs DSO in parallel across multiple seeds using multiprocessing."""
 
     messages = []
@@ -125,7 +124,7 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
     config["experiment"]["cmd"] = " ".join(sys.argv)
 
     # Set timestamp once to be used by all workers
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S") + str(time)
     config["experiment"]["timestamp"] = timestamp
 
     # Fix incompatible configurations
@@ -162,12 +161,9 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
     # Save n_cores_task to config
     config["training"]["n_cores_task"] = n_cores_task
 
-    # Start training
-    print_summary(config, runs, messages)
+    return config, runs, n_cores_task, messages
 
-    return config, runs, n_cores_task
-
-def run_experiment(config, runs, n_cores_task):
+def run_experiment(config, runs, n_cores_task, model):
     # Generate configs (with incremented seeds) for each run
     configs = [deepcopy(config) for _ in range(runs)]
     for i, config in enumerate(configs):
@@ -182,7 +178,7 @@ def run_experiment(config, runs, n_cores_task):
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
     else:
         for i, config in enumerate(configs):
-            result, summary_path = train_dso(config)
+            result, summary_path = train_dso(config, model)
             if not safe_update_summary(summary_path, result):
                 print("Warning: Could not update summary stats at {}".format(summary_path))
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
@@ -202,6 +198,9 @@ def grid_search(config, param_dicts, n_cores_task):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
+
+    experiments = []
+
     for i, params in enumerate(param_dicts):
         config_mod = copy.deepcopy(config)
 
@@ -213,7 +212,7 @@ def grid_search(config, param_dicts, n_cores_task):
                 config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
         exp_suffix = exp_suffix[:-1]
 
-        config_mod, runs, n_cores_task = clean_config(config_mod, n_cores_task=n_cores_task)
+        config_mod, runs, n_cores_task, messages = clean_config(config_mod, n_cores_task=n_cores_task, time=i)
         # Adjust run directory to keep results separate
         # e.g. append a suffix with the hyperparams
         # Here we incorporate them into the 'exp_name'
@@ -228,23 +227,44 @@ def grid_search(config, param_dicts, n_cores_task):
         config_mod["experiment"]["exp_name"] += "_" + timestamp
         config_mod["experiment"]["logdir"] = "./log_hypers"
 
-        print(f"\n=== Running grid search with {params} ===")
+        model = DeepSymbolicOptimizer(deepcopy(config_mod))
 
-        summary_path = run_experiment(config_mod, runs, n_cores_task)
+        experiment = {
+            "config_mod": config_mod,
+            "model": model,
+            "runs": runs,
+            "n_cores_task": n_cores_task,
+            "params": json.dumps(params),
+            "messages": messages
+        }
 
-        parameters = json.dumps(params)
+        experiments.append(experiment)
+
+    for i, experiment in enumerate(experiments):
+
+        print(f"\n=== Running grid search with {experiment['params']} ===")
+
+        print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
+
+        summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
+
+        parameters = json.dumps(experiment["params"])
         summary = pd.read_csv(summary_path)
 
         summary["params_json"] = parameters
         summaries.append(summary)
-        t = summary["t"]
-        print(f"=== FINISHED ITERATION {i} in {float(t): .4f} seconds===")
+        try:
+            t = float(summary["t"])
+        except TypeError:
+            print("Warning: Summary not in expected format.")
+            t = float(summary["t"].min())
+        print(f"=== FINISHED ITERATION {i} in {t: .4f} seconds===")
         print(summary)
 
     return summaries, timestamp
 
 def postprocess(summaries, timestamp, save_results=False):
-    all_results = pd.concat(summaries, ignore_index=True)
+    all_results = pd.concat(summaries, keys=range(len(summaries)))
     all_results_sorted = all_results.sort_values(by="t", ascending=True)
 
     print(all_results_sorted)
@@ -252,7 +272,7 @@ def postprocess(summaries, timestamp, save_results=False):
         folder = f'./log/hypers_{timestamp}'
         os.makedirs(folder, exist_ok=True)
         print(f"Saving results to {folder}...")
-        all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
+        all_results_sorted.to_csv(f'{folder}/results.csv', index=True)
 
 def main(save_results=False, config_path='', random=False, trials=None, n_cores_task=1):
     try:
@@ -266,7 +286,7 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     epsilons = [0.01, 0.05, 0.1]
 
     # Vanilla PG Parameters
-    learning_rates = [5e-5, 1e-4, 5e-4]
+    learning_rates = [5e-5 for _ in range(20)]
     entropy_weights = [0.01, 0.03, 0.1]
     entropy_gammas = [0.5, 0.75, 0.99]
 
