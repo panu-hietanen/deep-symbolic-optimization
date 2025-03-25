@@ -60,7 +60,6 @@ def train_dso(config, model):
     result = model.train()
     result["t"] = time.time() - start
     result.pop("program")
-    model.run += 1
 
     save_path = model.config_experiment["save_path"]
     summary_path = os.path.join(save_path, "summary.csv")
@@ -257,7 +256,8 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     return summaries, timestamp
 
 def postprocess(summaries, timestamp, save_results=False):
-    all_results = pd.concat(summaries, ignore_index=True)
+    all_results = pd.concat(summaries, keys=range(len(summaries)))
+    all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
 
     grouped = all_results_sorted.groupby("dataset")
@@ -294,9 +294,10 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1):
     # Benchmarks
     # benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     benchmarks = ['Nguyen-1']
+    benchmarks *= runs
 
     start = time.time()
-    summaries, timestamp = benchmark(config, benchmarks, runs, n_cores_task)
+    summaries, timestamp = benchmark(config, benchmarks, n_cores_task=n_cores_task)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
