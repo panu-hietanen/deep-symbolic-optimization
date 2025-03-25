@@ -55,9 +55,6 @@ class DeepSymbolicOptimizer():
         self.set_config(config)
         self.sess = None
 
-        # Clear the cache and reset the compute graph
-        Program.clear_cache()
-
         # Generate objects needed for training and set seeds
         self.pool = self.make_pool_and_set_task()
         self.prior = self.make_prior()
@@ -69,6 +66,14 @@ class DeepSymbolicOptimizer():
             print(self.dataset_output)
         if self.prior_output:
             print(self.prior_output)
+
+        if self.sync:
+            for _ in range(len(self.workers)):
+                self.task_queue.put({"type": "init"})
+
+        # Clear the cache and reset the compute graph
+        Program.clear_cache()
+        set_task(self.config_task)
         tf.reset_default_graph()
         self.set_seeds() # Must be called _after_ resetting graph and _after_ setting task
 

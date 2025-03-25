@@ -241,9 +241,6 @@ class SyncTrainer(Trainer):
         self.param_queue = param_queue
         self.workers = workers
 
-        for _ in range(len(workers)):
-            self.task_queue.put({"type": "init"})
-
     def run_one_step(self, override=None):
         s_history = list(Program.cache.keys())
         positional_entropy = None
