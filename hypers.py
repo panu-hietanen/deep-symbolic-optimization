@@ -26,7 +26,8 @@ PARAM_MAPPING = {
     'alpha_train': 'alpha',
     'clip': 'ppo_clip_ratio',
     'iters': 'ppo_n_iters',
-    'mb': 'ppo_n_mb'
+    'mb': 'ppo_n_mb',
+    'bench': 'dataset'
 }
 
 CONFIG_MAPPING = {
@@ -39,6 +40,7 @@ CONFIG_MAPPING = {
     'batch_size': 'training',
     'epsilon': 'training',
     'alpha_train': 'training',
+    'bench': 'task'
 }
 
 def train_dso(config, model):
@@ -213,7 +215,7 @@ def grid_search(config, param_dicts, n_cores_task):
                 config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
         exp_suffix = exp_suffix[:-1]
 
-        config_mod, runs, n_cores_task, messages = clean_config(config_mod, n_cores_task=n_cores_task, time=i)
+        config_mod, runs, n_cores_task, messages = clean_config(config_mod, n_cores_task=n_cores_task, seed=i, time=i)
         # Adjust run directory to keep results separate
         # e.g. append a suffix with the hyperparams
         # Here we incorporate them into the 'exp_name'
@@ -289,7 +291,7 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     epsilons = [0.01, 0.05, 0.1]
 
     # Vanilla PG Parameters
-    learning_rates = [5e-5 for _ in range(200)]
+    learning_rates = [5e-5 for _ in range(2)]
     entropy_weights = [0.01, 0.03, 0.1]
     entropy_gammas = [0.5, 0.75, 0.99]
 
@@ -298,17 +300,25 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     ppo_n_iters = [5, 10, 15]
     ppo_n_mb = [1, 4, 8]
 
+    # Benchmarks
+    benchmarks = ['Nguyen-2', 'Nguyen-1']
+
     param_dicts = [
         {"lr": lr, "ew": ew, "eg": eg, "clip": clip, "iters": iters, "mb": mb}
         for lr, ew, eg, clip, iters, mb in
         itertools.product(learning_rates, entropy_weights, entropy_gammas, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
     ]
 
-    # For testing
     param_dicts = [
-        {"lr": lr}
-        for lr in learning_rates
+        {"lr": lr, "bench": b}
+        for lr, b in itertools.product(learning_rates, benchmarks)
     ]
+
+    # For testing
+    # param_dicts = [
+    #     {"lr": lr}
+    #     for lr in learning_rates
+    # ]
 
     start = time.time()
     if random:

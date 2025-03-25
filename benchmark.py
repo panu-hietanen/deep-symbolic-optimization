@@ -197,7 +197,7 @@ def run_experiment(config, runs, n_cores_task, model):
 def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     summaries = []
     timestamp = None
-    print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
+    print("Starting workers...")
 
     experiments = []
 
@@ -206,9 +206,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
 
         exp_suffix = benchmark
 
-        config_mod["task"]["dataset"] = benchmark
-
-        config_mod, runs, n_cores_task, messages = clean_config(config_mod, runs=runs, n_cores_task=n_cores_task, time=i)
+        config_mod, runs, n_cores_task, messages = clean_config(config_mod, runs=runs, n_cores_task=n_cores_task, seed=i, benchmark=benchmark, time=i)
         # Adjust run directory to keep results separate
         # e.g. append a suffix with the hyperparams
         # Here we incorporate them into the 'exp_name'
@@ -236,9 +234,10 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
 
         experiments.append(experiment)
 
+    print("Beginning experiments.")
     for i, experiment in enumerate(experiments):
 
-        print(f"\n=== Dataset {benchmark} ===")
+        print(f"\n=== Dataset {experiment['benchmark']} ===")
 
         print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 
@@ -248,9 +247,9 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
 
         summary = pd.read_csv(summary_path)
 
-        summary["dataset"] = benchmark
+        summary["dataset"] = experiment['benchmark']
         summaries.append(summary)
-        print(f"=== FINISHED BENCHMARK {benchmark} IN {end - start: .4f} SECONDS===")
+        print(f"=== FINISHED BENCHMARK {experiment['benchmark']} IN {end - start: .4f} SECONDS===")
         print(summary)
 
     return summaries, timestamp
@@ -292,8 +291,9 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1):
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Benchmarks
-    # benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    benchmarks = ['Nguyen-1']
+    benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
+    # benchmarks = ['Nguyen-1', 'Nguyen-2']
+    print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
     start = time.time()
