@@ -65,6 +65,10 @@ class DeepSymbolicOptimizer():
             self.workers = self.make_workers()
 
     def setup(self):
+        if self.dataset_output:
+            print(self.dataset_output)
+        if self.prior_output:
+            print(self.prior_output)
         tf.reset_default_graph()
         self.set_seeds() # Must be called _after_ resetting graph and _after_ setting task
 
@@ -242,7 +246,8 @@ class DeepSymbolicOptimizer():
         random.seed(shifted_seed)
 
     def make_prior(self):
-        prior = make_prior(Program.library, self.config_prior)
+        prior, prior_output = make_prior(Program.library, self.config_prior)
+        self.prior_output = prior_output
         return prior
 
     def make_state_manager(self):
@@ -337,6 +342,10 @@ class DeepSymbolicOptimizer():
 
         # Set the Task for the parent process
         set_task(self.config_task)
+        if hasattr(Program.task, "output_message"):
+            self.dataset_output = Program.task.output_message
+        else:
+            self.dataset_output = None
 
         return pool
 

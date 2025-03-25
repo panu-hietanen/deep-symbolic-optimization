@@ -94,6 +94,7 @@ class RegressionTask(HierarchicalTask):
             self.y_test = benchmark.y_test
             self.y_test_noiseless = benchmark.y_test_noiseless
             self.name = benchmark.name
+            self.output_message = benchmark.output_message
 
             # For benchmarks, always use the benchmark function_set.
             # Issue a warning if the user tried to supply a different one.

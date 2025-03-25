@@ -115,7 +115,7 @@ class BenchmarkDataset(object):
         if backup and logdir is not None:
             output_message += self.save(logdir)
         output_message += '-- BUILDING DATASET END -------------\n'
-        print(output_message)
+        self.output_message = output_message
 
     def extract_dataset_specs(self, specs):
         specs = ast.literal_eval(specs)
