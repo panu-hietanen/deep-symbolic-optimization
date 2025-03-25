@@ -265,6 +265,7 @@ def grid_search(config, param_dicts, n_cores_task):
 
 def postprocess(summaries, timestamp, save_results=False):
     all_results = pd.concat(summaries, keys=range(len(summaries)))
+    all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by="t", ascending=True)
 
     print(all_results_sorted)
