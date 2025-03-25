@@ -36,42 +36,36 @@ class Worker(mp.Process):
         self.batch_size = batch_size
 
     def run(self):
-        print(f"worker {self.worker_id} init...")
-        config = tf.ConfigProto(device_count={'GPU': 0})
-        if self.sess is None:
-            self.sess = tf.Session(config=config)
-        if self.state_manager is None:
-            self.state_manager = HierarchicalStateManager(**self.state_manager_kwargs)
-
-        if self.policy is None:
-            self.policy = self.policy_class(
-                self.sess,
-                self.prior,
-                self.state_manager,
-                self.worker_id,
-                **self.policy_kwargs
-            )
-
-        self.sess.run(tf.global_variables_initializer())
-
         while True:
-            print(f"worker {self.worker_id} running...")
             task = self.task_queue.get()
             if task is None:
                 print(f"Worker {self.worker_id} stopping...")
                 break
 
-            print(f"worker {self.worker_id} received task: {task}")
+            elif task["type"] == "init":
+                print(f"Worker {self.worker_id} initialised.")
+                config = tf.ConfigProto(device_count={'GPU': 0})
+                if self.sess is None:
+                    self.sess = tf.Session(config=config)
+                if self.state_manager is None:
+                    self.state_manager = HierarchicalStateManager(**self.state_manager_kwargs)
 
-            if task["type"] == "print":
-                print(f"worker {self.worker_id} says '{task['message']}'")
+                if self.policy is None:
+                    self.policy = self.policy_class(
+                        self.sess,
+                        self.prior,
+                        self.state_manager,
+                        self.worker_id,
+                        **self.policy_kwargs
+                    )
+
+                self.sess.run(tf.global_variables_initializer())
 
             elif task["type"] == "update_params":
                 new_params = task["params"]
                 self.set_params(new_params)
 
             elif task["type"] == "sample":
-                print(f"worker {self.worker_id} sampling")
                 override = task["override"]
                 actions, obs, priors, programs, n_extra = self.sample_batch(override)
                 data = {
@@ -82,7 +76,6 @@ class Worker(mp.Process):
                     "programs": programs,
                     "n_extra": n_extra,
                 }
-                print(f"worker {self.worker_id} got data: {data}")
                 self.result_queue.put(data)
 
             else:
