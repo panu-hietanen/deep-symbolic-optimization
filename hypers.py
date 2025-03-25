@@ -198,6 +198,7 @@ def grid_search(config, param_dicts, n_cores_task):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
+    print("Starting workers...")
 
     experiments = []
 
@@ -240,6 +241,7 @@ def grid_search(config, param_dicts, n_cores_task):
 
         experiments.append(experiment)
 
+    print("Beginning experiments.")
     for i, experiment in enumerate(experiments):
 
         print(f"\n=== Running grid search with {experiment['params']} ===")
@@ -287,7 +289,7 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     epsilons = [0.01, 0.05, 0.1]
 
     # Vanilla PG Parameters
-    learning_rates = [5e-5 for _ in range(20)]
+    learning_rates = [5e-5 for _ in range(200)]
     entropy_weights = [0.01, 0.03, 0.1]
     entropy_gammas = [0.5, 0.75, 0.99]
 
