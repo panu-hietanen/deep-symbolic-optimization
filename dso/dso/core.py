@@ -342,10 +342,9 @@ class DeepSymbolicOptimizer():
 
         # Set the Task for the parent process
         set_task(self.config_task)
+        self.dataset_output = None
         if hasattr(Program.task, "output_message"):
             self.dataset_output = Program.task.output_message
-        else:
-            self.dataset_output = None
 
         return pool
 
