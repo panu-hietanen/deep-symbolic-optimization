@@ -55,8 +55,6 @@ class DeepSymbolicOptimizer():
         self.set_config(config)
         self.sess = None
 
-    def setup(self):
-
         # Clear the cache and reset the compute graph
         Program.clear_cache()
 
@@ -66,6 +64,7 @@ class DeepSymbolicOptimizer():
         if self.sync:
             self.workers = self.make_workers()
 
+    def setup(self):
         tf.reset_default_graph()
         self.set_seeds() # Must be called _after_ resetting graph and _after_ setting task
 
