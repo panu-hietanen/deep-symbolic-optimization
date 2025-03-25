@@ -41,7 +41,7 @@ CONFIG_MAPPING = {
     'alpha_train': 'training',
 }
 
-def train_dso(config):
+def train_dso(config, model):
     """Trains DSO and returns dict of reward, expression, and traversal"""
 
     print("\n== TRAINING SEED {} START ============".format(config["experiment"]["seed"]))
@@ -56,11 +56,11 @@ def train_dso(config):
     '''
 
     # Train the model
-    model = DeepSymbolicOptimizer(deepcopy(config))
     start = time.time()
     result = model.train()
     result["t"] = time.time() - start
     result.pop("program")
+    model.run += 1
 
     save_path = model.config_experiment["save_path"]
     summary_path = os.path.join(save_path, "summary.csv")
@@ -87,7 +87,7 @@ def print_summary(config, runs, messages):
     print(text)
 
 
-def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmark=None, exp_name=None):
+def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmark=None, exp_name=None, time=0):
     """Runs DSO in parallel across multiple seeds using multiprocessing."""
 
     messages = []
@@ -125,7 +125,7 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
     config["experiment"]["cmd"] = " ".join(sys.argv)
 
     # Set timestamp once to be used by all workers
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S") + str(time)
     config["experiment"]["timestamp"] = timestamp
 
     # Fix incompatible configurations
@@ -162,12 +162,9 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
     # Save n_cores_task to config
     config["training"]["n_cores_task"] = n_cores_task
 
-    # Start training
-    print_summary(config, runs, messages)
+    return config, runs, n_cores_task, messages
 
-    return config, runs, n_cores_task
-
-def run_experiment(config, runs, n_cores_task):
+def run_experiment(config, runs, n_cores_task, model):
     # Generate configs (with incremented seeds) for each run
     configs = [deepcopy(config) for _ in range(runs)]
     for i, config in enumerate(configs):
@@ -182,7 +179,7 @@ def run_experiment(config, runs, n_cores_task):
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
     else:
         for i, config in enumerate(configs):
-            result, summary_path = train_dso(config)
+            result, summary_path = train_dso(config, model)
             if not safe_update_summary(summary_path, result):
                 print("Warning: Could not update summary stats at {}".format(summary_path))
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
@@ -202,15 +199,17 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
+
+    experiments = []
+
     for i, benchmark in enumerate(benchmarks):
-        print(f"\n=== Dataset {benchmark} ===")
         config_mod = copy.deepcopy(config)
 
         exp_suffix = benchmark
 
         config_mod["task"]["dataset"] = benchmark
 
-        config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs, n_cores_task=n_cores_task)
+        config_mod, runs, n_cores_task, messages = clean_config(config_mod, runs=runs, n_cores_task=n_cores_task, time=i)
         # Adjust run directory to keep results separate
         # e.g. append a suffix with the hyperparams
         # Here we incorporate them into the 'exp_name'
@@ -225,8 +224,27 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
         config_mod["experiment"]["exp_name"] += "_" + timestamp
         config_mod["experiment"]["logdir"] = "./log_hypers"
 
+        model = DeepSymbolicOptimizer(deepcopy(config_mod))
+
+        experiment = {
+            "config_mod": config_mod,
+            "model": model,
+            "runs": runs,
+            "n_cores_task": n_cores_task,
+            "benchmark": benchmark,
+            "messages": messages
+        }
+
+        experiments.append(experiment)
+
+    for i, experiment in enumerate(experiments):
+
+        print(f"\n=== Dataset {benchmark} ===")
+
+        print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
+
         start = time.time()
-        summary_path = run_experiment(config_mod, runs, n_cores_task)
+        summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
         end = time.time()
 
         summary = pd.read_csv(summary_path)
