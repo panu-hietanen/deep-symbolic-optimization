@@ -131,11 +131,16 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
     # Fix incompatible configurations
     if n_cores_task == -1:
         n_cores_task = multiprocessing.cpu_count()
-    if n_cores_task > runs:
+    if n_cores_task > runs and not config["training"]["sync"]:
         messages.append(
                 "INFO: Setting 'n_cores_task' to {} because there are only {} runs.".format(
                     runs, runs))
         n_cores_task = runs
+    if n_cores_task == 1 and config["training"]["sync"]:
+        messages.append(
+            "INFO: Setting 'sync' to False as there is only one core being used"
+        )
+        config["training"]["sync"] = False
     if config["training"]["verbose"] and n_cores_task > 1:
         messages.append(
                 "INFO: Setting 'verbose' to False for parallelized run.")
@@ -149,6 +154,14 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
                 "INFO: Setting 'parallel_eval' to 'False' as we are already parallelizing.")
         config["gp_meld"]["parallel_eval"] = False
 
+    if config["training"]["sync"]:
+        messages.append(
+            "INFO: Logging will be diminished for synchronous run."
+        )
+
+    # Save n_cores_task to config
+    config["training"]["n_cores_task"] = n_cores_task
+
     # Start training
     print_summary(config, runs, messages)
 
@@ -161,7 +174,7 @@ def run_experiment(config, runs, n_cores_task):
         config["experiment"]["seed"] += i
 
     # Farm out the work
-    if n_cores_task > 1:
+    if n_cores_task > 1 and not config["training"]["sync"]:
         pool = multiprocessing.Pool(n_cores_task)
         for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
             if not safe_update_summary(summary_path, result):
@@ -185,7 +198,7 @@ def run_experiment(config, runs, n_cores_task):
     print("== POST-PROCESS END ===================")
     return summary_path
 
-def benchmark(config, benchmarks, runs=1):
+def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     summaries = []
     timestamp = None
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
@@ -197,7 +210,7 @@ def benchmark(config, benchmarks, runs=1):
 
         config_mod["task"]["dataset"] = benchmark
 
-        config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs)
+        config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs, n_cores_task=n_cores_task)
         # Adjust run directory to keep results separate
         # e.g. append a suffix with the hyperparams
         # Here we incorporate them into the 'exp_name'
@@ -253,7 +266,7 @@ def postprocess(summaries, timestamp, save_results=False):
         all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
         summary_df.to_csv(f'{folder}/summary.csv', index=False)
 
-def main(save_results=False, config_path='', runs=1):
+def main(save_results=False, config_path='', runs=1, n_cores_task=1):
     try:
         with open(config_path, encoding='utf-8') as f:
             config = json.load(f)
@@ -265,7 +278,7 @@ def main(save_results=False, config_path='', runs=1):
     benchmarks = ['Nguyen-1']
 
     start = time.time()
-    summaries, timestamp = benchmark(config, benchmarks, runs)
+    summaries, timestamp = benchmark(config, benchmarks, runs, n_cores_task)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
@@ -275,5 +288,6 @@ if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
     runs = 2
-    main(save_results, config_path, runs)
+    n_cores_task = 2
+    main(save_results, config_path, runs, n_cores_task)
 
