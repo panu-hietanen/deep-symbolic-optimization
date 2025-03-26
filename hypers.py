@@ -244,26 +244,30 @@ def grid_search(config, param_dicts, n_cores_task):
         experiments.append(experiment)
 
     print("Beginning experiments.")
-    for i, experiment in enumerate(experiments):
+    try:
+        for i, experiment in enumerate(experiments):
 
-        print(f"\n@@@ Running grid search with {experiment['params']} @@@")
+            print(f"\n@@@ Running grid search with {experiment['params']} @@@")
 
-        print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
+            print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 
-        summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
+            summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
 
-        parameters = json.dumps(experiment["params"])
-        summary = pd.read_csv(summary_path)
+            parameters = json.dumps(experiment["params"])
+            summary = pd.read_csv(summary_path)
 
-        summary["params_json"] = parameters
-        summaries.append(summary)
-        try:
-            t = float(summary["t"])
-        except TypeError:
-            print("Warning: Summary not in expected format.")
-            t = float(summary["t"].min())
-        print(f"@@@ FINISHED ITERATION {i} in {t: .4f} seconds @@@")
-        print(summary)
+            summary["params_json"] = parameters
+            summaries.append(summary)
+            try:
+                t = float(summary["t"])
+            except TypeError:
+                print("Warning: Summary not in expected format.")
+                t = float(summary["t"].min())
+            print(f"@@@ FINISHED ITERATION {i} in {t: .4f} seconds @@@")
+            print(summary)
+    except KeyboardInterrupt:
+        print("Interrupted by user. Saving...")
+        return summaries, timestamp
 
     return summaries, timestamp
 
