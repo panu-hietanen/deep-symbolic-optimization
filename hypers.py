@@ -246,7 +246,7 @@ def grid_search(config, param_dicts, n_cores_task):
     print("Beginning experiments.")
     for i, experiment in enumerate(experiments):
 
-        print(f"\n=== Running grid search with {experiment['params']} ===")
+        print(f"\n@@@ Running grid search with {experiment['params']} @@@")
 
         print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 
@@ -262,7 +262,7 @@ def grid_search(config, param_dicts, n_cores_task):
         except TypeError:
             print("Warning: Summary not in expected format.")
             t = float(summary["t"].min())
-        print(f"=== FINISHED ITERATION {i} in {t: .4f} seconds===")
+        print(f"@@@ FINISHED ITERATION {i} in {t: .4f} seconds @@@")
         print(summary)
 
     return summaries, timestamp
@@ -291,7 +291,7 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     epsilons = [0.01, 0.05, 0.1]
 
     # Vanilla PG Parameters
-    learning_rates = [5e-5 for _ in range(2)]
+    learning_rates = [5e-6, 5e-5, 5e-4]
     entropy_weights = [0.01, 0.03, 0.1]
     entropy_gammas = [0.5, 0.75, 0.99]
 
@@ -304,15 +304,15 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     benchmarks = ['Nguyen-2', 'Nguyen-1']
 
     param_dicts = [
-        {"lr": lr, "ew": ew, "eg": eg, "clip": clip, "iters": iters, "mb": mb}
-        for lr, ew, eg, clip, iters, mb in
-        itertools.product(learning_rates, entropy_weights, entropy_gammas, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
+        {"lr": lr, "ew": ew, "eg": eg, "batch_size": bs, "epsilon": ep}
+        for lr, ew, eg, bs, ep in
+        itertools.product(learning_rates, entropy_weights, entropy_gammas, batch_sizes, epsilons)
     ]
 
-    param_dicts = [
-        {"lr": lr, "bench": b}
-        for lr, b in itertools.product(learning_rates, benchmarks)
-    ]
+    # param_dicts = [
+    #     {"lr": lr, "bench": b}
+    #     for lr, b in itertools.product(learning_rates, benchmarks)
+    # ]
 
     # For testing
     # param_dicts = [

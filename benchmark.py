@@ -235,22 +235,26 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
         experiments.append(experiment)
 
     print("Beginning experiments.")
-    for i, experiment in enumerate(experiments):
+    try:
+        for i, experiment in enumerate(experiments):
 
-        print(f"\n=== Dataset {experiment['benchmark']} ===")
+            print(f"\n@@@ Dataset {experiment['benchmark']} @@@")
 
-        print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
+            print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 
-        start = time.time()
-        summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
-        end = time.time()
+            start = time.time()
+            summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
+            end = time.time()
 
-        summary = pd.read_csv(summary_path)
+            summary = pd.read_csv(summary_path)
 
-        summary["dataset"] = experiment['benchmark']
-        summaries.append(summary)
-        print(f"=== FINISHED BENCHMARK {experiment['benchmark']} IN {end - start: .4f} SECONDS===")
-        print(summary)
+            summary["dataset"] = experiment['benchmark']
+            summaries.append(summary)
+            print(f"@@@ FINISHED BENCHMARK {experiment['benchmark']} IN {end - start: .4f} SECONDS @@@")
+            print(summary)
+    except KeyboardInterrupt:
+        print("Interrupted by user. Saving...")
+        return summaries, timestamp
 
     return summaries, timestamp
 
@@ -266,13 +270,38 @@ def postprocess(summaries, timestamp, save_results=False):
         avg_time=("t", "mean"),
         total_runs=("success", "count"),
         success_count=("success", "sum"),
+        avg_samples = ("n_samples", "mean"),
     ).reset_index()
 
     summary_df["failure_count"] = summary_df["total_runs"] - summary_df["success_count"]
     summary_df["success_rate"] = 100.0 * summary_df["success_rate"]
+
     summary_df["std_time"] = grouped["t"].std().values
     summary_df["min_time"] = grouped["t"].min().values
     summary_df["max_time"] = grouped["t"].max().values
+
+    summary_df["std_samples"] = grouped["n_samples"].std().values
+    summary_df["min_samples"] = grouped["n_samples"].min().values
+    summary_df["max_samples"] = grouped["n_samples"].max().values
+
+    summary_df["mean_nmse"] = grouped["nmse_test"].mean().values
+    summary_df["std_nmse"] = grouped["nmse_test"].std().values
+    summary_df["mean_nmse_noiseless"] = grouped["nmse_test_noiseless"].mean().values
+    summary_df["std_nmse_noiseless"] = grouped["nmse_test_noiseless"].std().values
+
+    # Filter to successful runs
+    successful = all_results_sorted[all_results_sorted["success"] == 1]
+    grouped_success = successful.groupby("dataset")
+
+    # Compute stats over only successful runs
+    summary_df["avg_time_successful"] = grouped_success["t"].mean().reindex(summary_df["dataset"]).values
+    summary_df["std_time_successful"] = grouped_success["t"].std().reindex(summary_df["dataset"]).values
+
+    summary_df["mean_nmse_successful"] = grouped_success["nmse_test"].mean().reindex(summary_df["dataset"]).values
+    summary_df["std_nmse_successful"] = grouped_success["nmse_test"].std().reindex(summary_df["dataset"]).values
+
+    summary_df["mean_samples_successful"] = grouped_success["n_samples"].mean().reindex(summary_df["dataset"]).values
+    summary_df["std_samples_successful"] = grouped_success["n_samples"].std().reindex(summary_df["dataset"]).values
 
     print("== RESULTS ==")
     print(summary_df)
