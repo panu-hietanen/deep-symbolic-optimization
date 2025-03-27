@@ -49,6 +49,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     print("Starting workers...")
 
     experiments = []
+    paths = []
 
     for i, benchmark in enumerate(benchmarks):
         config_mod = copy.deepcopy(config)
@@ -95,6 +96,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
             summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
             end = time.time()
 
+            paths.append(summary_path)
             summary = pd.read_csv(summary_path)
 
             summary["dataset"] = experiment['benchmark']
@@ -105,6 +107,21 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     except KeyboardInterrupt:
         print("Interrupted by user. Saving...")
         return summaries, timestamp
+    except Exception as e:
+        print(f"Error {e}. Saving...")
+        try:
+            return summaries, timestamp
+        except Exception as e:
+            print(f"Secondary error {e}. Trying to recover.")
+            summaries = []
+            for path, experiment in zip(paths[:-1], experiments[:-1]):
+                summary = pd.read_csv(path)
+
+                summary["dataset"] = experiment['benchmark']
+                summary["sync"] = experiment["config_mod"]["training"]["sync"]
+                summaries.append(summary)
+            return summaries, "RECOVERY"
+
 
     return summaries, timestamp
 
@@ -190,7 +207,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1):
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 200
+    runs = 100
     n_cores_task = 5
     main(save_results, config_path, runs, n_cores_task)
 
