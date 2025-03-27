@@ -108,7 +108,7 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
             "INFO: Setting 'sync' to False as there is only one core being used"
         )
         config["training"]["sync"] = False
-    if config["training"]["verbose"] and n_cores_task > 1:
+    if config["training"]["verbose"] and n_cores_task > 1 and not config["training"]["sync"]:
         messages.append(
                 "INFO: Setting 'verbose' to False for parallelized run.")
         config["training"]["verbose"] = False
