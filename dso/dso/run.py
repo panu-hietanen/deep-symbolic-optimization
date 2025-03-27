@@ -122,7 +122,7 @@ def main(config_template, runs, n_cores_task, seed, benchmark, exp_name):
             "INFO: Setting 'sync' to False as there is only one core being used"
         )
         config["training"]["sync"] = False
-    if config["training"]["verbose"] and n_cores_task > 1:
+    if config["training"]["verbose"] and n_cores_task > 1 and not config["training"]["sync"]:
         messages.append(
                 "INFO: Setting 'verbose' to False for parallelized run.")
         config["training"]["verbose"] = False
