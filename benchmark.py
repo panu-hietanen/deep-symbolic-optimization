@@ -98,6 +98,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
             summary = pd.read_csv(summary_path)
 
             summary["dataset"] = experiment['benchmark']
+            summary["sync"] = experiment["config_mod"]["training"]["sync"]
             summaries.append(summary)
             print(f"@@@ FINISHED BENCHMARK {experiment['benchmark']} IN {end - start: .4f} SECONDS @@@")
             print(summary)
@@ -189,7 +190,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1):
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 10
+    runs = 200
     n_cores_task = 5
     main(save_results, config_path, runs, n_cores_task)
 

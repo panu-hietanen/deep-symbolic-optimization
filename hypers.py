@@ -106,6 +106,7 @@ def grid_search(config, param_dicts, n_cores_task):
             summary = pd.read_csv(summary_path)
 
             summary["params_json"] = parameters
+            summary["sync"] = experiment["config_mod"]["training"]["sync"]
             summaries.append(summary)
             try:
                 t = float(summary["t"])
