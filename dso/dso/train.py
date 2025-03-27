@@ -272,7 +272,7 @@ class SyncTrainer(Trainer):
         for p in programs:
             Program.cache[p.str] = p
 
-        self.nevals += self.batch_size + n_extra
+        self.nevals += self.batch_size * self.n_cores_task + n_extra
 
         # # Request reward computation from workers
         # programs_split = np.array_split(programs, self.n_cores_task)
@@ -341,6 +341,12 @@ class SyncTrainer(Trainer):
         if r_max > self.r_best:
             self.r_best = r_max
             self.p_r_best = programs[np.argmax(r)]
+
+            # Print new best expression
+            if self.verbose or self.debug:
+                print("[{}] Training iteration {}, current best R: {:.4f}".format(get_duration(start_time), self.iteration + 1, self.r_best))
+                print("\n\t** New best")
+                self.p_r_best.print_stats()
 
         # Logging
         iteration_walltime = time.time() - start_time
