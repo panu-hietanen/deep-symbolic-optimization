@@ -5,11 +5,13 @@ import multiprocessing
 from copy import deepcopy
 from datetime import datetime
 
-from dso.logeval import LogEval
 from dso.config import load_config
+from dso.core import DeepSymbolicOptimizer
+from dso.logeval import LogEval
 from dso.utils import safe_update_summary
 
-def train_dso(config, model):
+
+def train_dso(config):
     """Trains DSO and returns dict of reward, expression, and traversal"""
 
     print("\n== TRAINING SEED {} START ============".format(config["experiment"]["seed"]))
@@ -24,6 +26,7 @@ def train_dso(config, model):
     '''
 
     # Train the model
+    model = DeepSymbolicOptimizer(deepcopy(config))
     start = time.time()
     result = model.train()
     result["t"] = time.time() - start
@@ -31,11 +34,10 @@ def train_dso(config, model):
 
     save_path = model.config_experiment["save_path"]
     summary_path = os.path.join(save_path, "summary.csv")
-    output_prefix = os.path.join(save_path,f"dso_{model.config_experiment['task_name']}_{model.config_experiment['seed']}")
 
     print("== TRAINING SEED {} END ==============".format(config["experiment"]["seed"]))
 
-    return result, summary_path, output_prefix
+    return result, summary_path
 
 
 def print_summary(config, runs, messages):
@@ -55,7 +57,7 @@ def print_summary(config, runs, messages):
     print(text)
 
 
-def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmark=None, exp_name=None, time=0):
+def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmark=None, exp_name=None):
     """Runs DSO in parallel across multiple seeds using multiprocessing."""
 
     messages = []
@@ -93,23 +95,18 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
     config["experiment"]["cmd"] = " ".join(sys.argv)
 
     # Set timestamp once to be used by all workers
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S") + str(time)
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
     config["experiment"]["timestamp"] = timestamp
 
     # Fix incompatible configurations
     if n_cores_task == -1:
         n_cores_task = multiprocessing.cpu_count()
-    if n_cores_task > runs and not config["training"]["sync"]:
+    if n_cores_task > runs:
         messages.append(
                 "INFO: Setting 'n_cores_task' to {} because there are only {} runs.".format(
                     runs, runs))
         n_cores_task = runs
-    if n_cores_task == 1 and config["training"]["sync"]:
-        messages.append(
-            "INFO: Setting 'sync' to False as there is only one core being used"
-        )
-        config["training"]["sync"] = False
-    if config["training"]["verbose"] and n_cores_task > 1 and not config["training"]["sync"]:
+    if config["training"]["verbose"] and n_cores_task > 1:
         messages.append(
                 "INFO: Setting 'verbose' to False for parallelized run.")
         config["training"]["verbose"] = False
@@ -122,32 +119,27 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
                 "INFO: Setting 'parallel_eval' to 'False' as we are already parallelizing.")
         config["gp_meld"]["parallel_eval"] = False
 
-    if config["training"]["sync"]:
-        messages.append(
-            "INFO: Logging will be diminished for synchronous run."
-        )
+    # Start training
+    print_summary(config, runs, messages)
 
-    # Save n_cores_task to config
-    config["training"]["n_cores_task"] = n_cores_task
+    return config, runs, n_cores_task
 
-    return config, runs, n_cores_task, messages
-
-def run_experiment(config, runs, n_cores_task, model):
+def run_experiment(config, runs, n_cores_task):
     # Generate configs (with incremented seeds) for each run
     configs = [deepcopy(config) for _ in range(runs)]
     for i, config in enumerate(configs):
         config["experiment"]["seed"] += i
 
     # Farm out the work
-    if n_cores_task > 1 and not config["training"]["sync"]:
+    if n_cores_task > 1:
         pool = multiprocessing.Pool(n_cores_task)
-        for i, (result, summary_path, output_prefix) in enumerate(pool.imap_unordered(train_dso, configs)):
+        for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
             if not safe_update_summary(summary_path, result):
                 print("Warning: Could not update summary stats at {}".format(summary_path))
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
     else:
         for i, config in enumerate(configs):
-            result, summary_path, output_prefix = train_dso(config, model)
+            result, summary_path = train_dso(config)
             if not safe_update_summary(summary_path, result):
                 print("Warning: Could not update summary stats at {}".format(summary_path))
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
@@ -161,4 +153,4 @@ def run_experiment(config, runs, n_cores_task, model):
         show_pf=config["logging"]["save_pareto_front"],
         save_plots=config["postprocess"]["save_plots"])
     print("== POST-PROCESS END ===================")
-    return summary_path, output_prefix
+    return summary_path
