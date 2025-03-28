@@ -36,59 +36,90 @@ CONFIG_MAPPING = {
 
 def grid_search(config, param_dicts):
     summaries = []
+    paths = []
+    cached = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
-    for i, params in enumerate(param_dicts):
-        config_mod = copy.deepcopy(config)
+    try:
+        for i, params in enumerate(param_dicts):
+            config_mod = copy.deepcopy(config)
 
-        exp_suffix = ""
-        for param in params:
-            config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]] = params[param]
-            exp_suffix += f"{param}-{params[param]}_"
-            if param in ['clip', 'iters', 'mb']:
-                config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
-        exp_suffix = exp_suffix[:-1]
+            exp_suffix = ""
+            for param in params:
+                config_mod[CONFIG_MAPPING[param]][PARAM_MAPPING[param]] = params[param]
+                exp_suffix += f"{param}-{params[param]}_"
+                if param in ['clip', 'iters', 'mb']:
+                    config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
+            exp_suffix = exp_suffix[:-1]
 
-        config_mod, runs, n_cores_task = clean_config(config_mod)
-        # Adjust run directory to keep results separate
-        # e.g. append a suffix with the hyperparams
-        # Here we incorporate them into the 'exp_name'
+            config_mod, runs, n_cores_task = clean_config(config_mod)
+            # Adjust run directory to keep results separate
+            # e.g. append a suffix with the hyperparams
+            # Here we incorporate them into the 'exp_name'
 
-        timestamp = config_mod["experiment"]["timestamp"]
+            timestamp = config_mod["experiment"]["timestamp"]
 
-        if config_mod["experiment"].get("exp_name") is not None:
-            config_mod["experiment"]["exp_name"] += "_" + exp_suffix
-        else:
-            config_mod["experiment"]["exp_name"] = exp_suffix
+            if config_mod["experiment"].get("exp_name") is not None:
+                config_mod["experiment"]["exp_name"] += "_" + exp_suffix
+            else:
+                config_mod["experiment"]["exp_name"] = exp_suffix
 
-        config_mod["experiment"]["exp_name"] += "_" + timestamp
-        config_mod["experiment"]["logdir"] = "./log_hypers"
+            config_mod["experiment"]["exp_name"] += "_" + timestamp
+            config_mod["experiment"]["logdir"] = "./log_hypers"
 
-        print(f"\n=== Running grid search with {params} ===")
+            print(f"\n=== Running grid search with {params} ===")
 
-        summary_path = run_experiment(config_mod, runs, n_cores_task)
+            summary_path, output_prefix = run_experiment(config_mod, runs, n_cores_task)
 
-        parameters = json.dumps(params)
-        summary = pd.read_csv(summary_path)
+            parameters = json.dumps(params)
+            summary = pd.read_csv(summary_path)
+            if config_mod["logging"]["save_cache"]:
+                cache_file = output_prefix + "_cache.csv"
+                try:
+                    cache = pd.read_csv(cache_file)
+                    cached.append(cache)
+                except FileNotFoundError:
+                    print('Warning: Cache file not found.')
 
-        summary["params_json"] = parameters
-        summaries.append(summary)
-        t = summary["t"]
-        print(f"=== FINISHED ITERATION {i} in {float(t): .4f} seconds===")
-        print(summary)
+            summary["params_json"] = parameters
+            summaries.append(summary)
+            t = summary["t"]
+            print(f"=== FINISHED ITERATION {i} in {float(t): .4f} seconds===")
+            print(summary)
+    except KeyboardInterrupt:
+        print("Interrupted by user. Saving...")
+    except Exception as e:
+        print(f"Error {type(e).__name__}: {e}. Trying to recover...")
+        summaries = []
+        timestamp = "RECOVERY"
+        for path, params in zip(paths[:-1], param_dicts[:-1]):
+            summary = pd.read_csv(path)
 
-    return summaries, timestamp
+            parameters = json.dumps(params)
+            summary["params_json"] = parameters
+            summaries.append(summary)
 
-def postprocess(summaries, timestamp, save_results=False):
-    all_results = pd.concat(summaries, ignore_index=True)
+    return summaries, cached, timestamp
+
+def postprocess(summaries, cached, timestamp, save_results=False):
+    all_results = pd.concat(summaries, keys=range(len(summaries)))
+    all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by="t", ascending=True)
+
+    if cached:
+        all_caches = pd.concat(cached)
+        all_caches_sorted = all_caches.sort_values(by="r", ascending=False)
+    else:
+        all_caches_sorted = None
 
     print(all_results_sorted)
     if save_results:
         folder = f'./log/hypers_{timestamp}'
         os.makedirs(folder, exist_ok=True)
         print(f"Saving results to {folder}...")
-        all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
+        all_results_sorted.to_csv(f'{folder}/results.csv', index=True)
+        if all_caches_sorted is not None:
+            all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
 
 def main(save_results=False, config_path='', random=False, trials=None):
     try:
@@ -128,13 +159,13 @@ def main(save_results=False, config_path='', random=False, trials=None):
         if trials is None:
             raise ValueError("Must provide trials when random is True.")
         param_dicts = np.random.choice(param_dicts, trials, replace=False)
-        summaries, timestamp = grid_search(config, param_dicts)
+        summaries, cached, timestamp = grid_search(config, param_dicts)
     else:
-        summaries, timestamp = grid_search(config, param_dicts)
+        summaries, cached, timestamp = grid_search(config, param_dicts)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
-    postprocess(summaries, timestamp, save_results)
+    postprocess(summaries, cached, timestamp, save_results)
 
 if __name__ == "__main__":
     save_results = True

@@ -36,49 +36,76 @@ CONFIG_MAPPING = {
 
 def benchmark(config, benchmarks, runs=1):
     summaries = []
+    paths = []
+    cached = []
     timestamp = None
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
-    for i, benchmark in enumerate(benchmarks):
-        print(f"\n=== Dataset {benchmark} ===")
-        config_mod = copy.deepcopy(config)
+    try:
+        for i, benchmark in enumerate(benchmarks):
+            print(f"\n=== Dataset {benchmark} ===")
+            config_mod = copy.deepcopy(config)
 
-        exp_suffix = benchmark
+            exp_suffix = benchmark
 
-        config_mod["task"]["dataset"] = benchmark
+            config_mod["task"]["dataset"] = benchmark
 
-        config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs)
-        # Adjust run directory to keep results separate
-        # e.g. append a suffix with the hyperparams
-        # Here we incorporate them into the 'exp_name'
+            config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs)
+            # Adjust run directory to keep results separate
+            # e.g. append a suffix with the hyperparams
+            # Here we incorporate them into the 'exp_name'
 
-        timestamp = config_mod["experiment"]["timestamp"]
+            timestamp = config_mod["experiment"]["timestamp"]
 
-        if config_mod["experiment"].get("exp_name") is not None:
-            config_mod["experiment"]["exp_name"] += "_" + exp_suffix
-        else:
-            config_mod["experiment"]["exp_name"] = exp_suffix
+            if config_mod["experiment"].get("exp_name") is not None:
+                config_mod["experiment"]["exp_name"] += "_" + exp_suffix
+            else:
+                config_mod["experiment"]["exp_name"] = exp_suffix
 
-        config_mod["experiment"]["exp_name"] += "_" + timestamp
-        config_mod["experiment"]["logdir"] = "./log_hypers"
+            config_mod["experiment"]["exp_name"] += "_" + timestamp
+            config_mod["experiment"]["logdir"] = "./log_hypers"
 
-        start = time.time()
-        summary_path = run_experiment(config_mod, runs, n_cores_task)
-        end = time.time()
+            start = time.time()
+            summary_path, output_prefix = run_experiment(config_mod, runs, n_cores_task)
+            end = time.time()
 
-        summary = pd.read_csv(summary_path)
+            summary = pd.read_csv(summary_path)
+            if config_mod["logging"]["save_cache"]:
+                cache_file = output_prefix + "_cache.csv"
+                try:
+                    cache = pd.read_csv(cache_file)
+                    cached.append(cache)
+                except FileNotFoundError:
+                    print('Warning: Cache file not found.')
 
-        summary["dataset"] = benchmark
-        summaries.append(summary)
-        print(f"=== FINISHED BENCHMARK {benchmark} IN {end - start: .4f} SECONDS===")
-        print(summary)
+            summary["dataset"] = benchmark
+            summaries.append(summary)
+            print(f"=== FINISHED BENCHMARK {benchmark} IN {end - start: .4f} SECONDS===")
+            print(summary)
+    except KeyboardInterrupt:
+        print("Interrupted by user. Saving...")
+    except Exception as e:
+        print(f"Error {type(e).__name__}: {e}. Trying to recover...")
+        summaries = []
+        timestamp = "RECOVERY"
+        for path, benchmark in zip(paths[:-1], benchmarks[:-1]):
+            summary = pd.read_csv(path)
 
-    return summaries, timestamp
+            summary["dataset"] = benchmark
+            summaries.append(summary)
 
-def postprocess(summaries, timestamp, save_results=False):
+    return summaries, cached, timestamp
+
+def postprocess(summaries, cached, timestamp, save_results=False):
     all_results = pd.concat(summaries, ignore_index=True)
     all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
 
     grouped = all_results_sorted.groupby("dataset")
+
+    if cached:
+        all_caches = pd.concat(cached)
+        all_caches_sorted = all_caches.sort_values(by="r", ascending=False)
+    else:
+        all_caches_sorted = None
 
     summary_df = grouped.agg(
         success_rate=("success", "mean"),
@@ -101,6 +128,8 @@ def postprocess(summaries, timestamp, save_results=False):
         print(f"Saving results to {folder}...")
         all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
         summary_df.to_csv(f'{folder}/summary.csv', index=False)
+        if all_caches_sorted is not None:
+            all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
 
 def main(save_results=False, config_path='', runs=1):
     try:
@@ -114,11 +143,11 @@ def main(save_results=False, config_path='', runs=1):
     benchmarks = ['Nguyen-1']
 
     start = time.time()
-    summaries, timestamp = benchmark(config, benchmarks, runs)
+    summaries, cached, timestamp = benchmark(config, benchmarks, runs)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
-    postprocess(summaries, timestamp, save_results)
+    postprocess(summaries, cached, timestamp, save_results)
 
 if __name__ == "__main__":
     save_results = True
