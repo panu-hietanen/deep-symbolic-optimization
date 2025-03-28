@@ -24,6 +24,9 @@ def make_policy(sess, prior, state_manager, policy_type, **config_policy):
     if policy_type == "rnn":
         from dso.policy.rnn_policy import RNNPolicy
         policy_class = RNNPolicy
+    elif policy_type == "noisy-rnn":
+        from dso.policy.rnn_policy import NoisyRNNPolicy
+        policy_class = NoisyRNNPolicy
     else:
         # Custom policy import
         policy_class = import_custom_source(policy_type)

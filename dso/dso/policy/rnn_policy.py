@@ -8,18 +8,45 @@ from dso.memory import Batch
 
 from dso.policy import Policy
 from dso.utils import make_batch_ph
-from dso.policy.rnn_cell import NoisyRNNCell, NoisyLSTMCell
+from dso.policy.rnn_cell import NoisyLSTMCell
 
-class Wrapper(tf.contrib.rnn.LayerRNNCell):
 
-    def __init__(self, cell, output_size):
+class NoisyLinearWrapper(tf.contrib.rnn.LayerRNNCell):
+    """RNNCell wrapper with Factorised Gaussian Noise added to the output linear layer.
+
+    References:
+        - https://arxiv.org/pdf/1706.01905
+        - https://github.com/tensorflow/models/blob/master/research/brain_coder/single_task/pg_agent.py
+    """
+
+    def __init__(self, cell, output_size, sigma_init=0.017):
         self.cell = cell
         self._output_size = output_size
+        self.sigma_init = sigma_init
 
     def __call__(self, inputs, state, scope=None):
         with tf.variable_scope(type(self).__name__):
             outputs, state = self.cell(inputs, state, scope=scope)
-            logits = tf.layers.dense(outputs, units=self._output_size)
+
+            output_dim = outputs.shape[-1]
+
+            theta = tf.get_variable("theta", shape=[output_dim, self._output_size],
+                                    initializer=tf.glorot_uniform_initializer())
+            bias_theta = tf.get_variable("bias_theta", shape=[self._output_size],
+                                         initializer=tf.zeros_initializer())
+
+            sigma = tf.get_variable("sigma", shape=[output_dim, self._output_size],
+                                    initializer=tf.constant_initializer(self.sigma_init))
+            bias_sigma = tf.get_variable("bias_sigma", shape=[self._output_size],
+                                         initializer=tf.constant_initializer(self.sigma_init))
+
+            epsilon_w = tf.random.normal(shape=tf.shape(theta))
+            epsilon_b = tf.random.normal(shape=tf.shape(bias_theta))
+
+            w = theta + sigma * epsilon_w
+            b = bias_theta + bias_sigma * epsilon_b
+
+            logits = tf.matmul(outputs, w) + b
 
         return logits, state
 
@@ -33,84 +60,6 @@ class Wrapper(tf.contrib.rnn.LayerRNNCell):
 
     def zero_state(self, batch_size, dtype):
         return self.cell.zero_state(batch_size, dtype)
-
-class LinearWrapper(Wrapper):
-    """RNNCell wrapper that adds a linear layer to the output.
-
-    See: https://github.com/tensorflow/models/blob/master/research/brain_coder/single_task/pg_agent.py
-    """
-
-    def __init__(self, cell, output_size):
-        super().__init__(cell, output_size)
-
-    def __call__(self, inputs, state, scope=None):
-        with tf.variable_scope(type(self).__name__):
-            outputs, state = self.cell(inputs, state, scope=scope)
-            with tf.variable_scope('perturbation_layer'):
-                # Standard parameters
-                theta = tf.get_variable("theta", shape=[outputs.shape[-1], self._output_size],
-                                        initializer=tf.glorot_uniform_initializer())
-                bias_theta = tf.get_variable("bias_theta", shape=[self._output_size],
-                                             initializer=tf.zeros_initializer())
-
-                # Perturbation parameters (sigma)
-                sigma = tf.get_variable("sigma", shape=[outputs.shape[-1], self._output_size],
-                                        initializer=tf.constant_initializer(0.017))
-                bias_sigma = tf.get_variable("bias_sigma", shape=[self._output_size],
-                                             initializer=tf.constant_initializer(0.017))
-
-                # Sample noise
-                epsilon_w = tf.random.normal(shape=tf.shape(theta))
-                epsilon_b = tf.random.normal(shape=tf.shape(bias_theta))
-
-                # Compute perturbed weights and biases
-                w = theta + sigma * epsilon_w
-                b = bias_theta + bias_sigma * epsilon_b
-
-                # Perturbed logits
-                logits = tf.matmul(outputs, w) + b
-
-        return logits, state
-
-class NoisyWrapper(Wrapper):
-    """LSTM Cell with Factorised Gaussian Noise.
-
-    See:
-    - https://github.com/tensorflow/models/blob/master/research/brain_coder/single_task/pg_agent.py
-    - https://arxiv.org/pdf/1706.01905
-    """
-
-    def __init__(self, cell, output_size):
-        super().__init__(cell, output_size)
-
-    def __call__(self, inputs, state, scope=None):
-        with tf.variable_scope(type(self).__name__):
-            outputs, state = self.cell(inputs, state, scope=scope)
-            with tf.variable_scope('perturbation_layer'):
-                # Standard parameters
-                theta = tf.get_variable("theta", shape=[outputs.shape[-1], self._output_size],
-                                        initializer=tf.glorot_uniform_initializer())
-                bias_theta = tf.get_variable("bias_theta", shape=[self._output_size],
-                                             initializer=tf.zeros_initializer())
-
-                # Perturbation parameters (sigma)
-                sigma = tf.get_variable("sigma", shape=[outputs.shape[-1], self._output_size],
-                                        initializer=tf.constant_initializer(0.017))
-                bias_sigma = tf.get_variable("bias_sigma", shape=[self._output_size],
-                                             initializer=tf.constant_initializer(0.017))
-
-                # Sample noise
-                epsilon_w = tf.random.normal(shape=tf.shape(theta))
-                epsilon_b = tf.random.normal(shape=tf.shape(bias_theta))
-
-                # Compute perturbed weights and biases
-                w = theta + sigma * epsilon_w
-                b = bias_theta + bias_sigma * epsilon_b
-
-                # Perturbed logits
-                logits = tf.matmul(outputs, w) + b
-
-        return logits, state
 
 def safe_cross_entropy(p, logq, axis=-1):
     """Compute p * logq safely, by susbstituting
@@ -225,7 +174,7 @@ class RNNPolicy(Policy):
             initializer = make_initializer(initializer)
             cell = tf.contrib.rnn.MultiRNNCell(
                 [make_cell(cell, n, initializer=initializer) for n in num_units])
-            cell = LinearWrapper(cell=cell, output_size=n_choices)
+            cell = NoisyLinearWrapper(cell=cell, output_size=n_choices)
 
             # Set the cell attribute needed for make_neglog_probs_and_entropy
             self.cell = cell
@@ -544,67 +493,14 @@ class RNNPolicy(Policy):
         self.sess.run(assign_ops)
 
 class NoisyRNNPolicy(RNNPolicy):
-    """Recurrent neural network (RNN) policy used to generate expressions.
+    """Recurrent neural network (RNN) policy with Factorised Gaussian Noise."""
 
-    Specifically, the RNN outputs a distribution over pre-order traversals of
-    symbolic expression trees.
+    def __init__(self, sigma_init=0.017, **kwargs):
 
-    Parameters
-    ----------
-    action_prob_lowerbound: float
-        Lower bound on probability of each action.
+        self.sigma_init = sigma_init
+        super().__init__(**kwargs)
 
-    cell : str
-        Recurrent cell to use. Supports 'lstm' and 'gru'.
-
-    max_attempts_at_novel_batch: int
-        maximum number of repetitions of sampling to get b new samples
-        during a call of policy.sample(b)
-
-    num_layers : int
-        Number of RNN layers.
-
-    num_units : int or list of ints
-        Number of RNN cell units in each of the RNN's layers. If int, the value
-        is repeated for each layer. 
-
-    sample_novel_batch: bool
-        if True, then a call to policy.sample(b) attempts to produce b samples
-        that are not contained in the cache
-
-    initiailizer : str
-        Initializer for the recurrent cell. Supports 'zeros' and 'var_scale'.
-        
-    """
-    def __init__(self, sess, prior, state_manager, worker_id,
-                 debug = 0,
-                 max_length = 30,
-                 action_prob_lowerbound = 0.0,
-                 max_attempts_at_novel_batch = 10,
-                 sample_novel_batch = False,
-                 # RNN cell hyperparameters
-                 cell ='lstm',
-                 num_layers=1,
-                 num_units=32,
-                 initializer='zeros'):
-        super().__init__(sess, prior, state_manager, worker_id,
-                 debug = 0,
-                 max_length = 30,
-                 action_prob_lowerbound = 0.0,
-                 max_attempts_at_novel_batch = 10,
-                 sample_novel_batch = False,
-                 # RNN cell hyperparameters
-                 cell ='lstm',
-                 num_layers=1,
-                 num_units=32,
-                 initializer='zeros')
-
-    def _setup_tf_model(
-            self,
-            cell='lstm',
-            num_layers=1,
-            num_units=32,
-            initializer='zeros'):
+    def _setup_tf_model(self, cell='lstm', num_layers=1, num_units=32, initializer='zeros'):
 
         # Defined in super class
         # This can be susbtituted below
@@ -621,27 +517,25 @@ class NoisyRNNPolicy(RNNPolicy):
                     return tf.zeros_initializer()
                 if name == "var_scale":
                     return tf.contrib.layers.variance_scaling_initializer(
-                            factor=0.5, mode='FAN_AVG', uniform=True, seed=0)
-                raise ValueError("Did not recognize initializer '{}'".format(name))
+                        factor=0.5, mode='FAN_AVG', uniform=True, seed=0)
+                raise ValueError(f"Did not recognize initializer '{name}'")
 
-            def make_cell(name, num_units, initializer):
+            def make_cell(name, num_units, initializer, sigma_init):
                 if name == 'lstm':
-                    return NoisyLSTMCell(num_units, initializer=initializer)
+                    return NoisyLSTMCell(num_units, initializer=initializer, sigma_init=sigma_init)
                 if name == 'gru':
                     return tf.nn.rnn_cell.GRUCell(num_units, kernel_initializer=initializer,
                                                   bias_initializer=initializer)
                 raise ValueError("Did not recognize cell type '{}'".format(name))
 
-            # Create recurrent cell with noisy LSTM
             if isinstance(num_units, int):
                 num_units = [num_units] * num_layers
             initializer = make_initializer(initializer)
-            cell = tf.contrib.rnn.MultiRNNCell(
-                [make_cell(cell, n, initializer=initializer) for n in num_units])
-            cell = LinearWrapper(cell=cell, output_size=n_choices)
+            base_cell = tf.contrib.rnn.MultiRNNCell(
+                [make_cell(cell, n, initializer=initializer, sigma_init=self.sigma_init) for n in num_units])
 
-            # Set the cell attribute needed for make_neglog_probs_and_entropy
-            self.cell = cell
+            noisy_cell = NoisyLinearWrapper(base_cell, output_size=n_choices, sigma_init=self.sigma_init)
+            self.cell = noisy_cell
 
             task = Program.task
             initial_obs = task.reset_task(prior)
@@ -660,20 +554,12 @@ class NoisyRNNPolicy(RNNPolicy):
                     finished = tf.zeros(shape=[self.batch_size], dtype=tf.bool)
                     obs = initial_obs
                     next_input = state_manager.get_tensor_input(obs)
-                    next_cell_state = cell.zero_state(batch_size=self.batch_size, dtype=tf.float32) # 2-tuple, each shape (?, num_units)
+                    next_cell_state = self.cell.zero_state(batch_size=self.batch_size, dtype=tf.float32)
                     emit_output = None
-                    actions_ta = tf.TensorArray(dtype=tf.int32, size=0, dynamic_size=True, clear_after_read=False) # Read twice
-                    obs_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True, clear_after_read=True)
-                    priors_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True, clear_after_read=True)
-                    prior = initial_prior
-                    #lengths = tf.ones(shape=[self.batch_size], dtype=tf.int32)
-                    next_loop_state = (
-                        actions_ta,
-                        obs_ta,
-                        priors_ta,
-                        obs,
-                        prior,
-                        finished)
+                    actions_ta = tf.TensorArray(dtype=tf.int32, size=0, dynamic_size=True)
+                    obs_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+                    priors_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+                    next_loop_state = (actions_ta, obs_ta, priors_ta, obs, initial_prior, finished)
                 else:
                     actions_ta, obs_ta, priors_ta, obs, prior, finished = loop_state
                     # apply bound to logits before applying prior, so that hard constraints
@@ -707,9 +593,8 @@ class NoisyRNNPolicy(RNNPolicy):
 
                 return finished, next_input, next_cell_state, emit_output, next_loop_state
 
-            # Returns RNN emit outputs TensorArray (i.e. logits), final cell state, and final loop state
             with tf.variable_scope(f'policy{self.worker_id}'):
-                _, _, loop_state = tf.nn.raw_rnn(cell=cell, loop_fn=loop_fn)
+                _, _, loop_state = tf.nn.raw_rnn(cell=self.cell, loop_fn=loop_fn)
                 actions_ta, obs_ta, priors_ta, _, _, _ = loop_state
 
             self.actions = tf.transpose(actions_ta.stack(), perm=[1, 0]) # (?, max_length)

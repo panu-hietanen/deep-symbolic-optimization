@@ -24,7 +24,7 @@ from dso.prior import make_prior
 from dso.program import Program
 from dso.config import load_config
 from dso.tf_state_manager import make_state_manager
-from dso.policy.rnn_policy import RNNPolicy
+from dso.policy.rnn_policy import RNNPolicy, NoisyRNNPolicy
 from dso.worker import Worker, Worker
 
 from dso.policy.policy import make_policy
@@ -192,11 +192,18 @@ class DeepSymbolicOptimizer():
         batch_size = self.config_training["batch_size"]
         n_cores_task = self.config_training.get("n_cores_task")
 
+        if self.config_policy["policy_type"] == "rnn":
+            policy_class = RNNPolicy
+        elif self.config_policy["policy_type"] == "noisy-rnn":
+            policy_class = NoisyRNNPolicy
+        else:
+            raise NotImplementedError("Invalid Policy Type.")
+
         workers = []
         for w_id in range(1, n_cores_task+1):
             w = Worker(
                 worker_id=w_id,
-                policy_class=RNNPolicy,
+                policy_class=policy_class,
                 prior=self.prior,
                 policy_kwargs=self.config_policy,
                 state_manager_kwargs=self.config_state_manager,
