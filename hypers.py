@@ -135,6 +135,7 @@ def handle_summary(experiment, summaries, cached, filepaths, recovery = False):
 
     parameters = json.dumps(experiment["params"])
     summary["params_json"] = parameters
+    summary["dataset"] = experiment["config_mod"]["task"]["dataset"]
     summary["sync"] = experiment["config_mod"]["training"]["sync"]
     summary["workers"] = experiment["n_cores_task"] if experiment["config_mod"]["training"]["sync"] else 0
     summaries.append(summary)
