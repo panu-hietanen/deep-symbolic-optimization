@@ -89,7 +89,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     try:
         for i, experiment in enumerate(experiments):
 
-            print(f"\n@@@ Dataset {experiment['benchmark']} @@@")
+            print(f"\n@@@ Dataset {experiment['benchmark']} ({i}/{len(experiments)}) @@@")
 
             print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 

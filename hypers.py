@@ -98,7 +98,7 @@ def grid_search(config, param_dicts, n_cores_task):
     try:
         for i, experiment in enumerate(experiments):
 
-            print(f"\n@@@ Running grid search with {experiment['params']} @@@")
+            print(f"\n@@@ Running grid search with {experiment['params']} ({i}/{len(experiments)}) @@@")
 
             print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 
