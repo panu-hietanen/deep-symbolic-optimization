@@ -31,10 +31,11 @@ def train_dso(config, model):
 
     save_path = model.config_experiment["save_path"]
     summary_path = os.path.join(save_path, "summary.csv")
+    output_prefix = os.path.join(save_path,f"dso_{model.config_experiment['task_name']}_{model.config_experiment['seed']}")
 
     print("== TRAINING SEED {} END ==============".format(config["experiment"]["seed"]))
 
-    return result, summary_path
+    return result, summary_path, output_prefix
 
 
 def print_summary(config, runs, messages):
@@ -140,13 +141,13 @@ def run_experiment(config, runs, n_cores_task, model):
     # Farm out the work
     if n_cores_task > 1 and not config["training"]["sync"]:
         pool = multiprocessing.Pool(n_cores_task)
-        for i, (result, summary_path) in enumerate(pool.imap_unordered(train_dso, configs)):
+        for i, (result, summary_path, output_prefix) in enumerate(pool.imap_unordered(train_dso, configs)):
             if not safe_update_summary(summary_path, result):
                 print("Warning: Could not update summary stats at {}".format(summary_path))
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
     else:
         for i, config in enumerate(configs):
-            result, summary_path = train_dso(config, model)
+            result, summary_path, output_prefix = train_dso(config, model)
             if not safe_update_summary(summary_path, result):
                 print("Warning: Could not update summary stats at {}".format(summary_path))
             print("INFO: Completed run {} of {} in {:.0f} s".format(i + 1, runs, result["t"]))
@@ -160,4 +161,4 @@ def run_experiment(config, runs, n_cores_task, model):
         show_pf=config["logging"]["save_pareto_front"],
         save_plots=config["postprocess"]["save_plots"])
     print("== POST-PROCESS END ===================")
-    return summary_path
+    return summary_path, output_prefix

@@ -76,11 +76,16 @@
       "n_samples" : 2000000,
       "batch_size" : 1000,
       "epsilon" : 0.05,
-      "sync" : true,
+      "sync" : false,
 
       // Recommended to set this to as many cores as you can use! Especially if
       // using the "const" token.
       "n_cores_batch" : 1
+   },
+
+     "logging" : {
+      "save_cache" : true,
+      "save_cache_r_min" : 0.75,
    },
 
    // // Only the key Policy Optimizer hyperparameters are listed here. See

@@ -47,11 +47,13 @@ CONFIG_MAPPING = {
 
 def grid_search(config, param_dicts, n_cores_task):
     summaries = []
+    cached = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
     print("Starting workers...")
 
     experiments = []
+    paths = []
 
     for i, params in enumerate(param_dicts):
         config_mod = copy.deepcopy(config)
@@ -100,10 +102,18 @@ def grid_search(config, param_dicts, n_cores_task):
 
             print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 
-            summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
+            summary_path, output_prefix = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
 
             parameters = json.dumps(experiment["params"])
+            paths.append((summary_path, output_prefix))
             summary = pd.read_csv(summary_path)
+            if experiment["config_mod"]["logging"]["save_cache"]:
+                cache_file = output_prefix + "_cache.csv"
+                try:
+                    cache = pd.read_csv(cache_file)
+                    cached.append(cache)
+                except FileNotFoundError:
+                    print('Warning: Cache file not found.')
 
             summary["params_json"] = parameters
             summary["sync"] = experiment["config_mod"]["training"]["sync"]
@@ -117,14 +127,31 @@ def grid_search(config, param_dicts, n_cores_task):
             print(summary)
     except KeyboardInterrupt:
         print("Interrupted by user. Saving...")
-        return summaries, timestamp
+    except Exception as e:
+        print(f"Error {type(e).__name__}: {e}. Trying to recover...")
+        summaries = []
+        timestamp = "RECOVERY"
+        for path, experiment in zip(paths[:-1], experiments[:-1]):
+            summary = pd.read_csv(path)
 
-    return summaries, timestamp
+            parameters = json.dumps(experiment["params"])
+            summary["params_json"] = parameters
+            summary["sync"] = experiment["config_mod"]["training"]["sync"]
+            summaries.append(summary)
 
-def postprocess(summaries, timestamp, save_results=False):
+
+    return summaries, cached, timestamp
+
+def postprocess(summaries, cached, timestamp, save_results=False):
     all_results = pd.concat(summaries, keys=range(len(summaries)))
     all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by="t", ascending=True)
+
+    if cached:
+        all_caches = pd.concat(cached)
+        all_caches_sorted = all_caches.sort_values(by="r", ascending=False)
+    else:
+        all_caches_sorted = None
 
     print(all_results_sorted)
     if save_results:
@@ -132,6 +159,8 @@ def postprocess(summaries, timestamp, save_results=False):
         os.makedirs(folder, exist_ok=True)
         print(f"Saving results to {folder}...")
         all_results_sorted.to_csv(f'{folder}/results.csv', index=True)
+        if all_caches_sorted is not None:
+            all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
 
 def main(save_results=False, config_path='', random=False, trials=None, n_cores_task=1):
     try:
@@ -169,23 +198,23 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     # ]
 
     # For testing
-    # param_dicts = [
-    #     {"lr": lr}
-    #     for lr in learning_rates
-    # ]
+    param_dicts = [
+        {"lr": lr}
+        for lr in learning_rates
+    ]
 
     start = time.time()
     if random:
         if trials is None:
             raise ValueError("Must provide trials when random is True.")
         param_dicts = np.random.choice(param_dicts, trials, replace=False)
-        summaries, timestamp = grid_search(config, param_dicts, n_cores_task)
+        summaries, cached, timestamp = grid_search(config, param_dicts, n_cores_task)
     else:
-        summaries, timestamp = grid_search(config, param_dicts, n_cores_task)
+        summaries, cached, timestamp = grid_search(config, param_dicts, n_cores_task)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
-    postprocess(summaries, timestamp, save_results)
+    postprocess(summaries, cached, timestamp, save_results)
 
 if __name__ == "__main__":
     save_results = True

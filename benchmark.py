@@ -45,6 +45,7 @@ CONFIG_MAPPING = {
 
 def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     summaries = []
+    cached = []
     timestamp = None
     print("Starting workers...")
 
@@ -93,12 +94,18 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
             print_summary(experiment["config_mod"], experiment["runs"], experiment["messages"])
 
             start = time.time()
-            summary_path = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
+            summary_path, output_prefix = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
             end = time.time()
 
-            paths.append(summary_path)
+            paths.append((summary_path, output_prefix))
             summary = pd.read_csv(summary_path)
-
+            if experiment["config_mod"]["logging"]["save_cache"]:
+                cache_file = output_prefix + "_cache.csv"
+                try:
+                    cache = pd.read_csv(cache_file)
+                    cached.append(cache)
+                except FileNotFoundError:
+                    print('Warning: Cache file not found.')
             summary["dataset"] = experiment['benchmark']
             summary["sync"] = experiment["config_mod"]["training"]["sync"]
             summaries.append(summary)
@@ -106,26 +113,21 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
             print(summary)
     except KeyboardInterrupt:
         print("Interrupted by user. Saving...")
-        return summaries, timestamp
     except Exception as e:
-        print(f"Error {e}. Saving...")
-        try:
-            return summaries, timestamp
-        except Exception as e:
-            print(f"Secondary error {e}. Trying to recover.")
-            summaries = []
-            for path, experiment in zip(paths[:-1], experiments[:-1]):
-                summary = pd.read_csv(path)
+        print(f"Error {type(e).__name__}: {e}. Trying to recover...")
+        summaries = []
+        timestamp = "RECOVERY"
+        for path, experiment in zip(paths[:-1], experiments[:-1]):
+            summary = pd.read_csv(path)
 
-                summary["dataset"] = experiment['benchmark']
-                summary["sync"] = experiment["config_mod"]["training"]["sync"]
-                summaries.append(summary)
-            return summaries, "RECOVERY"
+            summary["dataset"] = experiment['benchmark']
+            summary["sync"] = experiment["config_mod"]["training"]["sync"]
+            summaries.append(summary)
 
 
-    return summaries, timestamp
+    return summaries, cached, timestamp
 
-def postprocess(summaries, timestamp, save_results=False):
+def postprocess(summaries, cached, timestamp, save_results=False):
     all_results = pd.concat(summaries, keys=range(len(summaries)))
     all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
@@ -175,6 +177,12 @@ def postprocess(summaries, timestamp, save_results=False):
     summary_df["mean_samples_successful"] = grouped_success["n_samples"].mean().reindex(summary_df["dataset"]).values
     summary_df["std_samples_successful"] = grouped_success["n_samples"].std().reindex(summary_df["dataset"]).values
 
+    if cached:
+        all_caches = pd.concat(cached)
+        all_caches_sorted = all_caches.sort_values(by="r", ascending=False)
+    else:
+        all_caches_sorted = None
+
     print("== RESULTS ==")
     print(summary_df)
     if save_results:
@@ -183,6 +191,8 @@ def postprocess(summaries, timestamp, save_results=False):
         print(f"Saving results to {folder}...")
         all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
         summary_df.to_csv(f'{folder}/summary.csv', index=False)
+        if all_caches_sorted is not None:
+            all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
 
 def main(save_results=False, config_path='', runs=1, n_cores_task=1):
     try:
@@ -193,21 +203,21 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1):
 
     # Benchmarks
     # benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    benchmarks = ['Nguyen-12']
+    benchmarks = ['Nguyen-1']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
     start = time.time()
-    summaries, timestamp = benchmark(config, benchmarks, n_cores_task=n_cores_task)
+    summaries, cached, timestamp = benchmark(config, benchmarks, n_cores_task=n_cores_task)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
-    postprocess(summaries, timestamp, save_results)
+    postprocess(summaries, cached, timestamp, save_results)
 
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 100
+    runs = 2
     n_cores_task = 5
     main(save_results, config_path, runs, n_cores_task)
 
