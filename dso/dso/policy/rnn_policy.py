@@ -22,29 +22,7 @@ class LinearWrapper(tf.contrib.rnn.LayerRNNCell):
     def __call__(self, inputs, state, scope=None):
         with tf.variable_scope(type(self).__name__):
             outputs, state = self.cell(inputs, state, scope=scope)
-            with tf.variable_scope('perturbation_layer'):
-                # Standard parameters
-                theta = tf.get_variable("theta", shape=[outputs.shape[-1], self._output_size],
-                                        initializer=tf.glorot_uniform_initializer())
-                bias_theta = tf.get_variable("bias_theta", shape=[self._output_size],
-                                             initializer=tf.zeros_initializer())
-
-                # Perturbation parameters (sigma)
-                sigma = tf.get_variable("sigma", shape=[outputs.shape[-1], self._output_size],
-                                        initializer=tf.constant_initializer(0.017))
-                bias_sigma = tf.get_variable("bias_sigma", shape=[self._output_size],
-                                             initializer=tf.constant_initializer(0.017))
-
-                # Sample noise
-                epsilon_w = tf.random.normal(shape=tf.shape(theta))
-                epsilon_b = tf.random.normal(shape=tf.shape(bias_theta))
-
-                # Compute perturbed weights and biases
-                w = theta + sigma * epsilon_w
-                b = bias_theta + bias_sigma * epsilon_b
-
-                # Perturbed logits
-                logits = tf.matmul(outputs, w) + b
+            logits = tf.layers.dense(outputs, units=self._output_size)
 
         return logits, state
 
