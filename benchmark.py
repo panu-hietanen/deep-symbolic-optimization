@@ -96,29 +96,60 @@ def benchmark(config, benchmarks, runs=1):
     return summaries, cached, timestamp
 
 def postprocess(summaries, cached, timestamp, save_results=False):
-    all_results = pd.concat(summaries, ignore_index=True)
+    all_results = pd.concat(summaries, keys=range(len(summaries)))
+    all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
 
     grouped = all_results_sorted.groupby("dataset")
-
-    if cached:
-        all_caches = pd.concat(cached)
-        all_caches_sorted = all_caches.sort_values(by="r", ascending=False)
-    else:
-        all_caches_sorted = None
 
     summary_df = grouped.agg(
         success_rate=("success", "mean"),
         avg_time=("t", "mean"),
         total_runs=("success", "count"),
         success_count=("success", "sum"),
+        avg_samples = ("n_samples", "mean"),
+        avg_reward=("r", "mean"),
     ).reset_index()
 
     summary_df["failure_count"] = summary_df["total_runs"] - summary_df["success_count"]
     summary_df["success_rate"] = 100.0 * summary_df["success_rate"]
+
+    summary_df["std_reward"] = grouped["r"].std().values
+    summary_df["min_reward"] = grouped["r"].min().values
+    summary_df["max_reward"] = grouped["r"].max().values
+
     summary_df["std_time"] = grouped["t"].std().values
     summary_df["min_time"] = grouped["t"].min().values
     summary_df["max_time"] = grouped["t"].max().values
+
+    summary_df["std_samples"] = grouped["n_samples"].std().values
+    summary_df["min_samples"] = grouped["n_samples"].min().values
+    summary_df["max_samples"] = grouped["n_samples"].max().values
+
+    summary_df["mean_nmse"] = grouped["nmse_test"].mean().values
+    summary_df["std_nmse"] = grouped["nmse_test"].std().values
+    summary_df["mean_nmse_noiseless"] = grouped["nmse_test_noiseless"].mean().values
+    summary_df["std_nmse_noiseless"] = grouped["nmse_test_noiseless"].std().values
+
+    # Filter to successful runs
+    successful = all_results_sorted[all_results_sorted["success"] == 1]
+    grouped_success = successful.groupby("dataset")
+
+    # Compute stats over only successful runs
+    summary_df["avg_time_successful"] = grouped_success["t"].mean().reindex(summary_df["dataset"]).values
+    summary_df["std_time_successful"] = grouped_success["t"].std().reindex(summary_df["dataset"]).values
+
+    summary_df["mean_nmse_successful"] = grouped_success["nmse_test"].mean().reindex(summary_df["dataset"]).values
+    summary_df["std_nmse_successful"] = grouped_success["nmse_test"].std().reindex(summary_df["dataset"]).values
+
+    summary_df["mean_samples_successful"] = grouped_success["n_samples"].mean().reindex(summary_df["dataset"]).values
+    summary_df["std_samples_successful"] = grouped_success["n_samples"].std().reindex(summary_df["dataset"]).values
+
+    if cached:
+        all_caches = pd.concat(cached)
+        all_caches_sorted = all_caches.sort_values(by="r", ascending=False)
+    else:
+        all_caches_sorted = None
 
     print("== RESULTS ==")
     print(summary_df)
