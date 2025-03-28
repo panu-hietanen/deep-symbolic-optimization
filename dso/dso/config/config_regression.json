@@ -83,6 +83,11 @@
       "n_cores_batch" : 1
    },
 
+     "logging" : {
+      "save_cache" : true,
+      "save_cache_r_min" : 0.75,
+   },
+
    // // Only the key Policy Optimizer hyperparameters are listed here. See
    // // config_common.json for the full list.
    "policy_optimizer" : {
