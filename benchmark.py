@@ -39,10 +39,11 @@ def benchmark(config, benchmarks, runs=1):
     paths = []
     cached = []
     timestamp = None
-    print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
+    n = len(benchmarks)
+    print(f"INFO: RUNNING {n} BENCHMARKS {runs} TIMES")
     try:
         for i, benchmark in enumerate(benchmarks):
-            print(f"\n=== Dataset {benchmark} ===")
+            print(f"\n=== Dataset {benchmark} ({i}/{n}) ===")
             config_mod = copy.deepcopy(config)
 
             exp_suffix = benchmark
@@ -68,19 +69,11 @@ def benchmark(config, benchmarks, runs=1):
             summary_path, output_prefix = run_experiment(config_mod, runs, n_cores_task)
             end = time.time()
 
-            summary = pd.read_csv(summary_path)
-            if config_mod["logging"]["save_cache"]:
-                cache_file = output_prefix + "_cache.csv"
-                try:
-                    cache = pd.read_csv(cache_file)
-                    cached.append(cache)
-                except FileNotFoundError:
-                    print('Warning: Cache file not found.')
+            filepaths = (summary_path, output_prefix)
+            paths.append(filepaths)
+            summaries, cached = handle_summary(config_mod, benchmark, summaries, cached, filepaths)
 
-            summary["dataset"] = benchmark
-            summaries.append(summary)
             print(f"=== FINISHED BENCHMARK {benchmark} IN {end - start: .4f} SECONDS===")
-            print(summary)
     except KeyboardInterrupt:
         print("Interrupted by user. Saving...")
     except Exception as e:
@@ -88,12 +81,25 @@ def benchmark(config, benchmarks, runs=1):
         summaries = []
         timestamp = "RECOVERY"
         for path, benchmark in zip(paths[:-1], benchmarks[:-1]):
-            summary = pd.read_csv(path)
-
-            summary["dataset"] = benchmark
-            summaries.append(summary)
+            summaries, cached = handle_summary(config, benchmark, summaries, cached, path, recovery=True)
 
     return summaries, cached, timestamp
+
+def handle_summary(config, benchmark, summaries, cached, filepaths, recovery=False):
+    summary_path, output_prefix = filepaths
+    summary = pd.read_csv(summary_path)
+    if config["logging"]["save_cache"]:
+        cache_file = output_prefix + "_cache.csv"
+        try:
+            cache = pd.read_csv(cache_file)
+            cached.append(cache)
+        except FileNotFoundError:
+            print('Warning: Cache file not found.')
+
+    summary["dataset"] = benchmark
+    summaries.append(summary)
+
+    return summaries, cached
 
 def postprocess(summaries, cached, timestamp, save_results=False):
     all_results = pd.concat(summaries, keys=range(len(summaries)))

@@ -39,7 +39,8 @@ def grid_search(config, param_dicts):
     paths = []
     cached = []
     timestamp = None
-    print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
+    n = len(param_dicts)
+    print(f"INFO: RUNNING {n} EXPERIMENTS")
     try:
         for i, params in enumerate(param_dicts):
             config_mod = copy.deepcopy(config)
@@ -67,25 +68,15 @@ def grid_search(config, param_dicts):
             config_mod["experiment"]["exp_name"] += "_" + timestamp
             config_mod["experiment"]["logdir"] = "./log_hypers"
 
-            print(f"\n=== Running grid search with {params} ===")
+            print(f"\n=== Running grid search with {params} ({i}/{n}) ===")
 
             summary_path, output_prefix = run_experiment(config_mod, runs, n_cores_task)
 
-            parameters = json.dumps(params)
-            summary = pd.read_csv(summary_path)
-            if config_mod["logging"]["save_cache"]:
-                cache_file = output_prefix + "_cache.csv"
-                try:
-                    cache = pd.read_csv(cache_file)
-                    cached.append(cache)
-                except FileNotFoundError:
-                    print('Warning: Cache file not found.')
+            filepaths = (summary_path, output_prefix)
+            paths.append(filepaths)
+            summaries, cached, t = handle_summary(config_mod, params, summaries, cached, filepaths)
 
-            summary["params_json"] = parameters
-            summaries.append(summary)
-            t = summary["t"]
             print(f"=== FINISHED ITERATION {i} in {float(t): .4f} seconds===")
-            print(summary)
     except KeyboardInterrupt:
         print("Interrupted by user. Saving...")
     except Exception as e:
@@ -93,13 +84,28 @@ def grid_search(config, param_dicts):
         summaries = []
         timestamp = "RECOVERY"
         for path, params in zip(paths[:-1], param_dicts[:-1]):
-            summary = pd.read_csv(path)
-
-            parameters = json.dumps(params)
-            summary["params_json"] = parameters
-            summaries.append(summary)
+            summaries, cached, _ = handle_summary(config, params, summaries, cached, path, recovery=True)
 
     return summaries, cached, timestamp
+
+def handle_summary(config, params, summaries, cached, filepaths, recovery=False):
+    summary_path, output_prefix = filepaths
+    summary = pd.read_csv(summary_path)
+    if config["logging"]["save_cache"]:
+        cache_file = output_prefix + "_cache.csv"
+        try:
+            cache = pd.read_csv(cache_file)
+            cached.append(cache)
+        except FileNotFoundError:
+            print('Warning: Cache file not found.')
+
+    parameters = json.dumps(params)
+    summary["params_json"] = parameters
+    summary["dataset"] = config["task"]["dataset"]
+    summaries.append(summary)
+    t = summary["t"]
+
+    return summaries, cached, t
 
 def postprocess(summaries, cached, timestamp, save_results=False):
     all_results = pd.concat(summaries, keys=range(len(summaries)))
