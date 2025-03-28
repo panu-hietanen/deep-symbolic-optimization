@@ -106,6 +106,7 @@ class RNNPolicy(Policy):
     """
 
     def __init__(self, sess, prior, state_manager, worker_id,
+                 sigma_init=None,
                  debug=0,
                  max_length=30,
                  action_prob_lowerbound=0.0,
@@ -495,10 +496,11 @@ class RNNPolicy(Policy):
 class NoisyRNNPolicy(RNNPolicy):
     """Recurrent neural network (RNN) policy with Factorised Gaussian Noise."""
 
-    def __init__(self, sigma_init=0.017, **kwargs):
+    def __init__(self, sess, prior, state_manager, worker_id,
+                 sigma_init=0.017, **kwargs):
 
         self.sigma_init = sigma_init
-        super().__init__(**kwargs)
+        super().__init__(sess, prior, state_manager, worker_id, **kwargs)
 
     def _setup_tf_model(self, cell='lstm', num_layers=1, num_units=32, initializer='zeros'):
 
@@ -556,9 +558,9 @@ class NoisyRNNPolicy(RNNPolicy):
                     next_input = state_manager.get_tensor_input(obs)
                     next_cell_state = self.cell.zero_state(batch_size=self.batch_size, dtype=tf.float32)
                     emit_output = None
-                    actions_ta = tf.TensorArray(dtype=tf.int32, size=0, dynamic_size=True)
-                    obs_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-                    priors_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+                    actions_ta = tf.TensorArray(dtype=tf.int32, size=0, dynamic_size=True, clear_after_read=False)
+                    obs_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True, clear_after_read=True)
+                    priors_ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True, clear_after_read=True)
                     next_loop_state = (actions_ta, obs_ta, priors_ta, obs, initial_prior, finished)
                 else:
                     actions_ta, obs_ta, priors_ta, obs, prior, finished = loop_state
