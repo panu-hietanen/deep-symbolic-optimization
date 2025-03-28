@@ -110,6 +110,14 @@
 
    },
 
+   "policy" : {
+
+      // Type of policy
+      // "rnn" is equivalent to "dso.policy.rnn_policy:RNNPolicy"
+      "policy_type" : "noisy-rnn",
+      "sigma_init" : 0.17
+   },
+
    // Hyperparameters related to including in situ priors and constraints. Each
    // prior must explicitly be turned "on" or it will not be used. See
    // config_common.json for descriptions of each prior.
