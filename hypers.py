@@ -104,27 +104,11 @@ def grid_search(config, param_dicts, n_cores_task):
 
             summary_path, output_prefix = run_experiment(experiment["config_mod"], experiment["runs"], experiment["n_cores_task"], experiment["model"])
 
-            parameters = json.dumps(experiment["params"])
-            paths.append((summary_path, output_prefix))
-            summary = pd.read_csv(summary_path)
-            if experiment["config_mod"]["logging"]["save_cache"]:
-                cache_file = output_prefix + "_cache.csv"
-                try:
-                    cache = pd.read_csv(cache_file)
-                    cached.append(cache)
-                except FileNotFoundError:
-                    print('Warning: Cache file not found.')
+            filepaths = (summary_path, output_prefix)
+            paths.append(filepaths)
+            summaries, cached, t = handle_summary(experiment, summaries, cached, filepaths)
 
-            summary["params_json"] = parameters
-            summary["sync"] = experiment["config_mod"]["training"]["sync"]
-            summaries.append(summary)
-            try:
-                t = float(summary["t"])
-            except TypeError:
-                print("Warning: Summary not in expected format.")
-                t = float(summary["t"].min())
             print(f"@@@ FINISHED ITERATION {i} in {t: .4f} seconds @@@")
-            print(summary)
     except KeyboardInterrupt:
         print("Interrupted by user. Saving...")
     except Exception as e:
@@ -132,15 +116,34 @@ def grid_search(config, param_dicts, n_cores_task):
         summaries = []
         timestamp = "RECOVERY"
         for path, experiment in zip(paths[:-1], experiments[:-1]):
-            summary = pd.read_csv(path)
+            summaries, cached, _ = handle_summary(experiment, summaries, cached, path, recovery=True)
 
-            parameters = json.dumps(experiment["params"])
-            summary["params_json"] = parameters
-            summary["sync"] = experiment["config_mod"]["training"]["sync"]
-            summaries.append(summary)
 
 
     return summaries, cached, timestamp
+
+def handle_summary(experiment, summaries, cached, filepaths, recovery = False):
+    summary_path, output_prefix = filepaths
+    summary = pd.read_csv(summary_path)
+    if experiment["config_mod"]["logging"]["save_cache"]:
+        cache_file = output_prefix + "_cache.csv"
+        try:
+            cache = pd.read_csv(cache_file)
+            cached.append(cache)
+        except FileNotFoundError:
+            print('Warning: Cache file not found.')
+
+    parameters = json.dumps(experiment["params"])
+    summary["params_json"] = parameters
+    summary["sync"] = experiment["config_mod"]["training"]["sync"]
+    summary["workers"] = experiment["n_cores_task"] if experiment["config_mod"]["training"]["sync"] else 0
+    summaries.append(summary)
+    try:
+        t = float(summary["t"])
+    except TypeError:
+        print("Warning: Summary not in expected format.")
+        t = float(summary["t"].min())
+    return summaries, cached, t
 
 def postprocess(summaries, cached, timestamp, save_results=False):
     all_results = pd.concat(summaries, keys=range(len(summaries)))
