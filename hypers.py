@@ -29,7 +29,8 @@ PARAM_MAPPING = {
     'clip': 'ppo_clip_ratio',
     'iters': 'ppo_n_iters',
     'mb': 'ppo_n_mb',
-    'bench': 'dataset'
+    'bench': 'dataset',
+    'sigma': 'sigma_init'
 }
 
 CONFIG_MAPPING = {
@@ -42,7 +43,8 @@ CONFIG_MAPPING = {
     'batch_size': 'training',
     'epsilon': 'training',
     'alpha_train': 'training',
-    'bench': 'task'
+    'bench': 'task',
+    'sigma': 'policy'
 }
 
 def grid_search(config, param_dicts, n_cores_task):
@@ -190,22 +192,25 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     # Benchmarks
     benchmarks = ['Nguyen-2', 'Nguyen-1']
 
-    param_dicts = [
-        {"lr": lr, "ew": ew, "eg": eg, "batch_size": bs, "epsilon": ep}
-        for lr, ew, eg, bs, ep in
-        itertools.product(learning_rates, entropy_weights, entropy_gammas, batch_sizes, epsilons)
-    ]
+    # Policy Parameters
+    sigmas = [0.001, 0.002, 0.003, 0.004, 0.005, 0.01, 0.05]
 
     # param_dicts = [
-    #     {"lr": lr, "bench": b}
-    #     for lr, b in itertools.product(learning_rates, benchmarks)
+    #     {"lr": lr, "ew": ew, "eg": eg, "batch_size": bs, "epsilon": ep}
+    #     for lr, ew, eg, bs, ep in
+    #     itertools.product(learning_rates, entropy_weights, entropy_gammas, batch_sizes, epsilons)
     # ]
 
-    # For testing
     param_dicts = [
-        {"lr": lr}
-        for lr in learning_rates
+        {"sigma": s}
+        for s in itertools.product(sigmas)
     ]
+
+    # For testing
+    # param_dicts = [
+    #     {"lr": lr}
+    #     for lr in learning_rates
+    # ]
 
     start = time.time()
     if random:
