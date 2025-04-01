@@ -115,7 +115,7 @@
       // Type of policy
       // "rnn" is equivalent to "dso.policy.rnn_policy:RNNPolicy"
       "policy_type" : "noisy-rnn",
-      "sigma_init" : 0.005
+      "sigma_init" : 0.01
    },
 
    // Hyperparameters related to including in situ priors and constraints. Each
