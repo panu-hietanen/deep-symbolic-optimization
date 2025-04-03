@@ -105,7 +105,9 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     except KeyboardInterrupt:
         print("Interrupted by user. Saving...")
     except Exception as e:
-        print(f"Error {type(e).__name__}: {e}. Trying to recover...")
+        print(f"Error {type(e).__name__}")
+        print(e)
+        print("Trying to recover...")
         summaries = []
         timestamp = "RECOVERY"
         for path, experiment in zip(paths[:-1], experiments[:-1]):
@@ -136,6 +138,7 @@ def postprocess(summaries, cached, timestamp, config, save_results=False):
         all_results = pd.concat(summaries, keys=range(len(summaries)))
     except ValueError as e:
         print(f"Error when collecting summaries: {e}")
+        return
     all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
 
