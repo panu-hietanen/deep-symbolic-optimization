@@ -85,6 +85,7 @@
 
      "logging" : {
       "save_cache" : true,
+      "save_summary" : false,
       "save_cache_r_min" : 0.75,
    },
 
