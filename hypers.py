@@ -174,13 +174,13 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Training Parameters
-    batch_sizes = [500, 1000, 5000]
-    epsilons = [0.01, 0.05, 0.1]
+    batch_sizes = [1000, 2000]
+    epsilons = [0.01, 0.05]
 
     # Vanilla PG Parameters
-    learning_rates = [5e-6, 5e-5, 5e-4]
-    entropy_weights = [0.01, 0.03, 0.1]
-    entropy_gammas = [0.5, 0.75, 0.99]
+    learning_rates = [5e-5, 5e-4]
+    entropy_weights = [0.03, 0.05, 0.1, 0.5]
+    entropy_gammas = [0.99]
 
     # PPO Parameters
     ppo_clip_ratio  = [0.1, 0.2, 0.3]
@@ -188,12 +188,12 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     ppo_n_mb = [1, 4, 8]
 
     # Benchmarks
-    benchmarks = ['Nguyen-2', 'Nguyen-1']
+    benchmarks = ['Nguyen-7', 'Nguyen-10']
 
     param_dicts = [
-        {"lr": lr, "ew": ew, "eg": eg, "batch_size": bs, "epsilon": ep}
-        for lr, ew, eg, bs, ep in
-        itertools.product(learning_rates, entropy_weights, entropy_gammas, batch_sizes, epsilons)
+        {"lr": lr, "ew": ew, "eg": eg, "batch_size": bs, "epsilon": ep, "bench": bench}
+        for lr, ew, eg, bs, ep, bench in
+        itertools.product(learning_rates, entropy_weights, entropy_gammas, batch_sizes, epsilons, benchmarks)
     ]
 
     # param_dicts = [
@@ -202,10 +202,10 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     # ]
 
     # For testing
-    param_dicts = [
-        {"lr": lr}
-        for lr in learning_rates
-    ]
+    # param_dicts = [
+    #     {"lr": lr}
+    #     for lr in learning_rates
+    # ]
 
     start = time.time()
     if random:
@@ -225,6 +225,6 @@ if __name__ == "__main__":
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
     random = False
     trials = 10
-    n_cores_task = 2
+    n_cores_task = 5
     main(save_results, config_path, random, trials, n_cores_task)
 
