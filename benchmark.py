@@ -185,8 +185,8 @@ def main(save_results=False, config_path='', runs=1):
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Benchmarks
-    # benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    benchmarks = ['Nguyen-1']
+    benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
+    # benchmarks = ['Nguyen-1']
 
     start = time.time()
     summaries, cached, timestamp = benchmark(config, benchmarks, runs)
@@ -199,7 +199,7 @@ def main(save_results=False, config_path='', runs=1):
 
 if __name__ == "__main__":
     save_results = True
-    config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 2
+    config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression_ppo.json'
+    runs = 20
     main(save_results, config_path, runs)
 
