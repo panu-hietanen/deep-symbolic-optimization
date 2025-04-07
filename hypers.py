@@ -50,7 +50,7 @@ def grid_search(config, param_dicts, n_cores_task):
     cached = []
     timestamp = None
     print(f"INFO: RUNNING {len(param_dicts)} EXPERIMENTS")
-    print("Starting workers...")
+    print("Starting sessions...")
 
     experiments = []
     paths = []
@@ -174,12 +174,12 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Training Parameters
-    batch_sizes = [1000, 2000]
+    batch_sizes = [2000, 3000]
     epsilons = [0.01, 0.05]
 
     # Vanilla PG Parameters
-    learning_rates = [5e-5, 5e-4]
-    entropy_weights = [0.03, 0.05, 0.1, 0.5]
+    learning_rates = [5e-5, 1e-4, 5e-4]
+    entropy_weights = [0.03, 0.01, 0.05]
     entropy_gammas = [0.99]
 
     # PPO Parameters
