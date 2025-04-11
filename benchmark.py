@@ -43,10 +43,43 @@ CONFIG_MAPPING = {
     'alpha_train': 'training',
 }
 
-def benchmark(config, benchmarks, runs=1, n_cores_task=1):
+def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
     summaries = []
     cached = []
     timestamp = None
+
+    try:
+        if recovery_files is not None:
+            print('Attempting to recover files.')
+            for path in recovery_files:
+                summary_path = os.path.join(path, 'summary.csv')
+                filepaths = (summary_path, None)
+
+                config_path = os.path.join(path, 'config.json')
+                try:
+                    with open(config_path, encoding='utf-8') as f:
+                        config = json.load(f)
+                except Exception as e:
+                    raise ValueError(f'Error reading config file {config_path}: {e}')
+                    break
+                config_mod, runs, n_cores_task, messages = clean_config(config, runs=runs, n_cores_task=n_cores_task)
+                benchmark = config_mod['task']['dataset']
+
+                experiment = {
+                    "config_mod": config_mod,
+                    "model": None,
+                    "runs": runs,
+                    "n_cores_task": n_cores_task,
+                    "benchmark": benchmark,
+                    "messages": messages
+                }
+
+                summaries, cached = handle_summary(experiment, summaries, cached, filepaths, recovery=True)
+    except Exception as e:
+        print("WARNING: Couldn't recover files!")
+        print(f"Error {type(e).__name__}: "
+              f"{e}.")
+
     print("Starting workers...")
 
     experiments = []
@@ -198,7 +231,7 @@ def postprocess(summaries, cached, timestamp, save_results=False):
         if all_caches_sorted is not None:
             all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
 
-def main(save_results=False, config_path='', runs=1, n_cores_task=1):
+def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_files=None):
     try:
         with open(config_path, encoding='utf-8') as f:
             config = json.load(f)
@@ -207,12 +240,13 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1):
 
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
+    # benchmarks = [f'Jin-{i}' for i in range(3,7)]
     # benchmarks = ['Nguyen-1']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
     start = time.time()
-    summaries, cached, timestamp = benchmark(config, benchmarks, n_cores_task=n_cores_task)
+    summaries, cached, timestamp = benchmark(config, benchmarks, n_cores_task=n_cores_task, recovery_files=recovery_files)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
@@ -221,7 +255,8 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1):
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 20
+    runs = 2
     n_cores_task = 5
-    main(save_results, config_path, runs, n_cores_task)
+    recovery_files = ['./log_hypers/Jin-1_2025-04-09-1632350', './log_hypers/Jin-1_2025-04-09-1632355', './log_hypers/Jin-2_2025-04-09-1632351', './log_hypers/Jin-2_2025-04-09-1632356']
+    main(save_results, config_path, runs, n_cores_task, recovery_files)
 
