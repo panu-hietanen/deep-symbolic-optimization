@@ -1,5 +1,5 @@
 """Parallelized, single-point launch script to run DSO on a set of benchmarks."""
-
+import csv
 import os
 import sys
 import time
@@ -164,8 +164,12 @@ def handle_summary(experiment, summaries, cached, filepaths, recovery = False):
 
     return summaries, cached
 
-def postprocess(summaries, cached, timestamp, save_results=False):
-    all_results = pd.concat(summaries, keys=range(len(summaries)))
+def postprocess(summaries, cached, timestamp, config, save_results=False):
+    try:
+        all_results = pd.concat(summaries, keys=range(len(summaries)))
+    except ValueError as e:
+        print(f"Error when collecting summaries: {e}")
+        return
     all_results.index = all_results.index.droplevel(1)
     all_results_sorted = all_results.sort_values(by=["dataset", "t"], ascending=[True, True])
 
@@ -228,6 +232,11 @@ def postprocess(summaries, cached, timestamp, save_results=False):
         print(f"Saving results to {folder}...")
         all_results_sorted.to_csv(f'{folder}/results.csv', index=False)
         summary_df.to_csv(f'{folder}/summary.csv', index=False)
+        for key, value in config.items():
+            with open(f"{folder}/config_{key}.csv", 'w') as f:
+                w = csv.DictWriter(f, value.keys())
+                w.writeheader()
+                w.writerow(value)
         if all_caches_sorted is not None:
             all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
 
@@ -241,7 +250,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     # benchmarks = [f'Jin-{i}' for i in range(3,7)]
-    # benchmarks = ['Nguyen-1']
+    benchmarks = ['Nguyen-1']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
@@ -250,7 +259,9 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
-    postprocess(summaries, cached, timestamp, save_results)
+    if save_results:
+        config, _, _, _ = clean_config(config)
+    postprocess(summaries, cached, timestamp, config, save_results)
 
 if __name__ == "__main__":
     save_results = True
@@ -258,5 +269,6 @@ if __name__ == "__main__":
     runs = 2
     n_cores_task = 5
     recovery_files = ['./log_hypers/Jin-1_2025-04-09-1632350', './log_hypers/Jin-1_2025-04-09-1632355', './log_hypers/Jin-2_2025-04-09-1632351', './log_hypers/Jin-2_2025-04-09-1632356']
+    recovery_files = None
     main(save_results, config_path, runs, n_cores_task, recovery_files)
 
