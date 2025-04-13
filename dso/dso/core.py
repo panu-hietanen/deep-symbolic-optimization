@@ -55,17 +55,25 @@ class DeepSymbolicOptimizer():
         self.set_config(config)
         self.sess = None
 
-    def setup(self):
-
-        # Clear the cache and reset the compute graph
-        Program.clear_cache()
-
         # Generate objects needed for training and set seeds
         self.pool = self.make_pool_and_set_task()
         self.prior = self.make_prior()
         if self.sync:
             self.workers = self.make_workers()
 
+    def setup(self):
+        if self.dataset_output:
+            print(self.dataset_output)
+        if self.prior_output:
+            print(self.prior_output)
+
+        if self.sync:
+            for _ in range(len(self.workers)):
+                self.task_queue.put({"type": "init"})
+
+        # Clear the cache and reset the compute graph
+        Program.clear_cache()
+        set_task(self.config_task)
         tf.reset_default_graph()
         self.set_seeds() # Must be called _after_ resetting graph and _after_ setting task
 
@@ -143,6 +151,18 @@ class DeepSymbolicOptimizer():
         # Save all results available only after all iterations are finished. Also return metrics to be added to the summary file
         results_add = self.logger.save_results(self.pool, self.trainer.nevals)
         result.update(results_add)
+
+        if self.trainer and self.sync:
+            self.trainer.close()
+
+        if self.sess is not None:
+            self.sess.close()
+            self.sess = None
+
+        for q in [getattr(self, attr, None) for attr in ["task_queue", "result_queue", "param_queue"]]:
+            if q is not None:
+                q.close()
+                q.join_thread()
 
         # Close the pool
         if self.pool is not None:
@@ -245,7 +265,8 @@ class DeepSymbolicOptimizer():
         random.seed(shifted_seed)
 
     def make_prior(self):
-        prior = make_prior(Program.library, self.config_prior)
+        prior, prior_output = make_prior(Program.library, self.config_prior)
+        self.prior_output = prior_output
         return prior
 
     def make_state_manager(self):
@@ -340,6 +361,9 @@ class DeepSymbolicOptimizer():
 
         # Set the Task for the parent process
         set_task(self.config_task)
+        self.dataset_output = None
+        if hasattr(Program.task, "output_message"):
+            self.dataset_output = Program.task.output_message
 
         return pool
 

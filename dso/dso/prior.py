@@ -88,12 +88,12 @@ def make_prior(library, config_prior):
 
     joint_prior = JointPrior(library, priors, count_constraints)
 
-    print("-- BUILDING PRIOR START -------------")
-    print("\n".join(["WARNING: " + message for message in warn_messages]))
-    print(joint_prior.describe())
-    print("-- BUILDING PRIOR END ---------------\n")
+    output_message = "-- BUILDING PRIOR START -------------\n"
+    output_message += ("\n".join(["WARNING: " + message for message in warn_messages])) + "\n"
+    output_message += joint_prior.describe() + "\n"
+    output_message += "-- BUILDING PRIOR END ---------------\n"
 
-    return joint_prior
+    return joint_prior, output_message
 
 
 class JointPrior():
