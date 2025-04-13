@@ -314,6 +314,24 @@ class SyncTrainer(Trainer):
                 Program.cache.update(cache)
         self.iteration += 1
 
+    def close(self):
+        """
+        Close the worker sessions.
+        """
+        print("CLOSING WORKERS:")
+        for _ in range(self.n_cores_task):
+            self.task_queue.put(None)
+
+        for w in self.workers:
+            w.join()
+
+        print("CLOSING QUEUES")
+        for q in [self.task_queue, self.result_queue, self.param_queue]:
+            q.close()
+            q.join_thread()
+
+        print("Alive workers:", [w.is_alive() for w in self.workers])
+
     def accumulate_grads(self, grads_list):
         n_arrays = len(grads_list[0])
         result = np.array([np.zeros_like(arr, dtype=float) for arr in grads_list[0]], dtype=object)
