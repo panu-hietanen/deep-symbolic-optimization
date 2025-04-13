@@ -60,30 +60,6 @@ class Worker(mp.Process):
         self.set_seeds()
 
     def run(self):
-        config = tf.ConfigProto(device_count={'GPU': 0})
-        if self.sess is None:
-            self.sess = tf.Session(config=config)
-        if self.state_manager is None:
-            self.state_manager = HierarchicalStateManager(**self.state_manager_kwargs)
-
-        if self.policy is None:
-            self.policy = self.policy_class(
-                self.sess,
-                self.prior,
-                self.state_manager,
-                self.worker_id,
-                **self.policy_kwargs
-            )
-
-        if self.policy_optimizer is None:
-            self.policy_optimizer = PGPolicyOptimizer(
-                self.sess,
-                self.policy,
-                **self.policy_optimizer_kwargs
-            )
-
-        self.sess.run(tf.global_variables_initializer())
-
         while True:
             task = self.task_queue.get()
             if task is None:
@@ -91,6 +67,32 @@ class Worker(mp.Process):
                 cache = Program.cache
                 self.result_queue.put(cache)
                 break
+
+            elif task["type"] == "init":
+                print(f"Worker {self.worker_id} initialised.")
+                config = tf.ConfigProto(device_count={'GPU': 0})
+                if self.sess is None:
+                    self.sess = tf.Session(config=config)
+                if self.state_manager is None:
+                    self.state_manager = HierarchicalStateManager(**self.state_manager_kwargs)
+
+                if self.policy is None:
+                    self.policy = self.policy_class(
+                        self.sess,
+                        self.prior,
+                        self.state_manager,
+                        self.worker_id,
+                        **self.policy_kwargs
+                    )
+
+                if self.policy_optimizer is None:
+                    self.policy_optimizer = PGPolicyOptimizer(
+                        self.sess,
+                        self.policy,
+                        **self.policy_optimizer_kwargs
+                    )
+
+                self.sess.run(tf.global_variables_initializer())
 
             elif task["type"] == "update_params":
                 new_params = task["params"]
