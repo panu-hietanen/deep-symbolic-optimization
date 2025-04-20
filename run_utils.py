@@ -25,8 +25,7 @@ def train_dso(config, model):
 
     # Train the model
     start = time.time()
-    result = model.train()
-    result["t"] = time.time() - start
+    result = model.train(start)
     result.pop("program")
 
     save_path = model.config_experiment["save_path"]
