@@ -249,8 +249,8 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    # benchmarks = [f'Jin-{i}' for i in range(3,7)]
-    benchmarks = ['Nguyen-1']
+    # benchmarks = [f'Jin-{i}' for i in range(1,7)]
+    # benchmarks = ['Nguyen-1']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
@@ -266,9 +266,9 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 2
+    runs = 20
     n_cores_task = 5
-    recovery_files = ['./log_hypers/Jin-1_2025-04-09-1632350', './log_hypers/Jin-1_2025-04-09-1632355', './log_hypers/Jin-2_2025-04-09-1632351', './log_hypers/Jin-2_2025-04-09-1632356']
+    # recovery_files = ['./log_hypers/Jin-1_2025-04-09-1632350', './log_hypers/Jin-1_2025-04-09-1632355', './log_hypers/Jin-2_2025-04-09-1632351', './log_hypers/Jin-2_2025-04-09-1632356']
     recovery_files = None
     main(save_results, config_path, runs, n_cores_task, recovery_files)
 

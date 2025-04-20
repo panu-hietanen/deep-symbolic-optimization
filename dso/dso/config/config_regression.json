@@ -74,7 +74,7 @@
    // config_common.json for the full list.
    "training" : {
       "n_samples" : 2000000,
-      "batch_size" : 1000,
+      "batch_size" : 3000,
       "epsilon" : 0.05,
       "sync" : true,
 
@@ -83,12 +83,17 @@
       "n_cores_batch" : 1
    },
 
+     "logging" : {
+      "save_cache" : true,
+      "save_cache_r_min" : 0.75,
+   },
+
    // // Only the key Policy Optimizer hyperparameters are listed here. See
    // // config_common.json for the full list.
    "policy_optimizer" : {
-      "learning_rate" : 0.0005,
-      "entropy_weight" : 0.03,
-      "entropy_gamma" : 0.7,
+      "learning_rate" : 0.0001,
+      "entropy_weight" : 0.01,
+      "entropy_gamma" : 0.99,
 
       // EXPERIMENTAL: Proximal policy optimization hyperparameters.
       // "policy_optimizer_type" : "ppo",
