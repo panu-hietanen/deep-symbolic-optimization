@@ -138,6 +138,7 @@ class Worker(mp.Process):
                     "r_best": self.r_best,
                     "p_r_best": self.p_r_best,
                     "n_extra": n_extra,
+                    "r": r,
                 }
                 self.result_queue.put(data)
 

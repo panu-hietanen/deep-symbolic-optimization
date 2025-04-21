@@ -262,6 +262,7 @@ class SyncTrainer(Trainer):
         data = [self.result_queue.get() for _ in range(self.n_cores_task)]
         grads = [w["grads"] for w in data]
         r_bests = [w["r_best"] for w in data]
+        r_all = np.ma.concatenate([w["r"] for w in data])
         p_r_bests = [w["p_r_best"] for w in data]
         n_extra = sum([w["n_extra"] for w in data])
 
@@ -282,12 +283,12 @@ class SyncTrainer(Trainer):
 
         # Logging
         iteration_walltime = time.time() - start_time
-        # self.logger.save_stats(_, _, _, _,
-        #                        _, _, _, _, _, s_history,
-        #                        _, self.r_best, r_max, ewma, summaries,
-        #                        self.iteration, _, iteration_walltime,
-        #                        _, _,
-        #                        positional_entropy, top_samples_per_batch)
+        self.logger.save_stats(r_all, _, _, _,
+                               _, _, _, _, _, _,
+                               _, self.r_best, r_max, _, _,
+                               self.iteration, _, iteration_walltime,
+                               self.nevals, _,
+                               _, _)
 
         # Stop if early stopping criteria is met
         if self.early_stopping and self.p_r_best.evaluate.get("success"):

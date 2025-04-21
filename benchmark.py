@@ -46,7 +46,7 @@ CONFIG_MAPPING = {
 def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
     summaries = []
     cached = []
-    infos = {d: [] for d in set(benchmarks)}
+    infos = {}
     timestamp = None
 
     try:
@@ -166,7 +166,10 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
             info_per_iteration = info.groupby('iteration').agg(
                 r=('r', 'max'),
             ).reset_index()
-            infos[experiment['benchmark']] = pd.concat()
+            if experiment['benchmark'] in infos:
+                infos[experiment['benchmark']] = info_per_iteration
+            else:
+                infos[experiment['benchmark']] = pd.concat(infos[experiment['benchmark']], info_per_iteration)
         except FileNotFoundError:
             print('Warning: Info file not found.')
 
