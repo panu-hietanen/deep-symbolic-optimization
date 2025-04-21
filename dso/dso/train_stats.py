@@ -145,9 +145,7 @@ class StatsLogger():
                     # l : length of the program
                     # invalid : if the program is invalid
                     headers = ["iteration",
-                                "r",
-                                "l",
-                                "invalid"]
+                                "r"]
                     f.write("{}\n".format(",".join(headers)))
             if self.save_token_count:
                 with open(self.token_counter_output_file, 'w') as f:
@@ -210,35 +208,22 @@ class StatsLogger():
         if self.output_file is not None:
             r_avg_full = np.mean(r_full)
 
-            l_avg_full = np.mean(l_full)
-            a_ent_full = np.mean(np.apply_along_axis(empirical_entropy, 0, actions_full))
-            n_unique_full = len(set(s_full))
-            n_novel_full = len(set(s_full).difference(s_history))
-            invalid_avg_full = np.mean(invalid_full)
+            # l_avg_full = np.mean(l_full)
+            # a_ent_full = np.mean(np.apply_along_axis(empirical_entropy, 0, actions_full))
+            # n_unique_full = len(set(s_full))
+            # n_novel_full = len(set(s_full).difference(s_history))
+            # invalid_avg_full = np.mean(invalid_full)
 
-            r_avg_sub = np.mean(r)
-            l_avg_sub = np.mean(l)
-            a_ent_sub = np.mean(np.apply_along_axis(empirical_entropy, 0, actions))
-            n_unique_sub = len(set(s))
-            n_novel_sub = len(set(s).difference(s_history))
-            invalid_avg_sub = np.mean(invalid)
+            # r_avg_sub = np.mean(r)
+            # l_avg_sub = np.mean(l)
+            # a_ent_sub = np.mean(np.apply_along_axis(empirical_entropy, 0, actions))
+            # n_unique_sub = len(set(s))
+            # n_novel_sub = len(set(s).difference(s_history))
+            # invalid_avg_sub = np.mean(invalid)
             stats = np.array([[
                 r_best,
                 r_max,
                 r_avg_full,
-                r_avg_sub,
-                l_avg_full,
-                l_avg_sub,
-                ewma,
-                n_unique_full,
-                n_unique_sub,
-                n_novel_full,
-                n_novel_sub,
-                a_ent_full,
-                a_ent_sub,
-                invalid_avg_full,
-                invalid_avg_sub,
-                baseline,
                 iteration_walltime,
                 nevals
             ]], dtype=np.float32)
@@ -246,9 +231,7 @@ class StatsLogger():
         if self.save_all_iterations:
             all_iteration_stats = np.array([
                               [iteration] * len(r_full),
-                              r_full,
-                              l_full,
-                              invalid_full
+                              r_full
                               ]).transpose()
             df = pd.DataFrame(all_iteration_stats)
             df.to_csv(self.buffer_all_programs, mode='a', header=False, index=False, line_terminator='\n')
