@@ -34,7 +34,7 @@ CONFIG_MAPPING = {
     'alpha_train': 'training',
 }
 
-def benchmark(config, benchmarks, runs=1):
+def benchmark(config, benchmarks, runs=1, n_cores_task=1):
     summaries = []
     paths = []
     cached = []
@@ -50,7 +50,7 @@ def benchmark(config, benchmarks, runs=1):
 
             config_mod["task"]["dataset"] = benchmark
 
-            config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs)
+            config_mod, runs, n_cores_task = clean_config(config_mod, runs=runs, n_cores_task=n_cores_task)
             # Adjust run directory to keep results separate
             # e.g. append a suffix with the hyperparams
             # Here we incorporate them into the 'exp_name'
@@ -177,7 +177,7 @@ def postprocess(summaries, cached, timestamp, config, save_results=False):
         if all_caches_sorted is not None:
             all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
 
-def main(save_results=False, config_path='', runs=1):
+def main(save_results=False, config_path='', runs=1, n_cores_task=1):
     try:
         with open(config_path, encoding='utf-8') as f:
             config = json.load(f)
@@ -187,10 +187,10 @@ def main(save_results=False, config_path='', runs=1):
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     # benchmarks = ['Nguyen-1']
-    benchmarks = [f'Jin-{i}' for i in range(1,6)]
+    # benchmarks = [f'Jin-{i}' for i in range(1,6)]
 
     start = time.time()
-    summaries, cached, timestamp = benchmark(config, benchmarks, runs)
+    summaries, cached, timestamp = benchmark(config, benchmarks, runs, n_cores_task)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
@@ -201,6 +201,7 @@ def main(save_results=False, config_path='', runs=1):
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 2
-    main(save_results, config_path, runs)
+    runs = 5
+    n_cores_task = 1
+    main(save_results, config_path, runs, n_cores_task)
 
