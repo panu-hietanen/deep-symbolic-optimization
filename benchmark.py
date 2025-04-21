@@ -167,9 +167,13 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
                 r=('r', 'max'),
             ).reset_index()
             if experiment['benchmark'] in infos:
-                infos[experiment['benchmark']] = info_per_iteration
+                combined = pd.concat([infos[experiment['benchmark']], info_per_iteration],
+                                                           ignore_index=True)
+                infos[experiment['benchmark']] = combined.groupby('iteration').agg(
+                    r=('r', 'max')
+                ).reset_index()
             else:
-                infos[experiment['benchmark']] = pd.concat(infos[experiment['benchmark']], info_per_iteration)
+                infos[experiment['benchmark']] = info_per_iteration
         except FileNotFoundError:
             print('Warning: Info file not found.')
 
@@ -180,7 +184,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
 
     return summaries, cached, infos
 
-def postprocess(summaries, cached, timestamp, config, save_results=False):
+def postprocess(summaries, cached, infos, timestamp, config, save_results=False):
     try:
         all_results = pd.concat(summaries, keys=range(len(summaries)))
     except ValueError as e:
@@ -240,6 +244,14 @@ def postprocess(summaries, cached, timestamp, config, save_results=False):
     else:
         all_caches_sorted = None
 
+    if infos:
+        all_info = pd.concat(
+            [df.assign(dataset=key) for key, df in infos.items()],
+            ignore_index=True
+        )
+    else:
+        all_info = None
+
     print("== RESULTS ==")
     print(summary_df)
     if save_results:
@@ -255,6 +267,9 @@ def postprocess(summaries, cached, timestamp, config, save_results=False):
                 w.writerow(value)
         if all_caches_sorted is not None:
             all_caches_sorted.to_csv(f'{folder}/cache.csv', index=False)
+        if all_info is not None:
+            all_info.to_csv(f'{folder}/all_info.csv', index=False)
+
 
 def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_files=None):
     try:
@@ -266,18 +281,18 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     # benchmarks = [f'Jin-{i}' for i in range(1,7)]
-    benchmarks = ['Nguyen-1']
+    benchmarks = ['Nguyen-1', 'Nguyen-11']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
     start = time.time()
-    summaries, cached, timestamp, infos = benchmark(config, benchmarks, n_cores_task=n_cores_task, recovery_files=recovery_files)
+    summaries, cached, infos, timestamp = benchmark(config, benchmarks, n_cores_task=n_cores_task, recovery_files=recovery_files)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
     if save_results:
         config, _, _, _ = clean_config(config)
-    postprocess(summaries, cached, timestamp, config, save_results)
+    postprocess(summaries, cached, infos, timestamp, config, save_results)
 
 if __name__ == "__main__":
     save_results = True
