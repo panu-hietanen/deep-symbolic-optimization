@@ -145,9 +145,7 @@ class StatsLogger():
                     # l : length of the program
                     # invalid : if the program is invalid
                     headers = ["iteration",
-                                "r",
-                                "l",
-                                "invalid"]
+                                "r"]
                     f.write("{}\n".format(",".join(headers)))
             if self.save_token_count:
                 with open(self.token_counter_output_file, 'w') as f:
@@ -246,9 +244,7 @@ class StatsLogger():
         if self.save_all_iterations:
             all_iteration_stats = np.array([
                               [iteration] * len(r_full),
-                              r_full,
-                              l_full,
-                              invalid_full
+                              r_full
                               ]).transpose()
             df = pd.DataFrame(all_iteration_stats)
             df.to_csv(self.buffer_all_programs, mode='a', header=False, index=False, line_terminator='\n')
