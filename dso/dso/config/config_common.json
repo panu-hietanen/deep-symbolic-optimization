@@ -71,7 +71,7 @@
 
    // Parameters to control what outputs to save.
    "logging" : {
-      "save_all_iterations" : false,
+      "save_all_iterations" : true,
       "save_summary" : false,
       "save_positional_entropy" : false,
       "save_pareto_front" : true,

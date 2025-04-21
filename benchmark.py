@@ -46,6 +46,7 @@ CONFIG_MAPPING = {
 def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
     summaries = []
     cached = []
+    infos = {d: [] for d in set(benchmarks)}
     timestamp = None
 
     try:
@@ -74,7 +75,8 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
                     "messages": messages
                 }
 
-                summaries, cached = handle_summary(experiment, summaries, cached, filepaths, recovery=True)
+                summaries, cached, infos = handle_summary(experiment, summaries, infos,
+                                                          cached, filepaths, recovery=True)
     except Exception as e:
         print("WARNING: Couldn't recover files!")
         print(f"Error {type(e).__name__}: "
@@ -132,7 +134,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
 
             filepaths = (summary_path, output_prefix)
             paths.append(filepaths)
-            summaries, cached = handle_summary(experiment, summaries, cached, filepaths)
+            summaries, cached, infos = handle_summary(experiment, summaries, infos, cached, filepaths)
 
             print(f"@@@ FINISHED BENCHMARK {experiment['benchmark']} IN {end - start: .4f} SECONDS @@@")
     except KeyboardInterrupt:
@@ -142,12 +144,12 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
         summaries = []
         timestamp = "RECOVERY"
         for path, experiment in zip(paths[:-1], experiments[:-1]):
-            summaries, cached = handle_summary(experiment, summaries, cached, path, recovery=True)
+            summaries, cached, infos = handle_summary(experiment, summaries, infos, cached, path, recovery=True)
 
 
-    return summaries, cached, timestamp
+    return summaries, cached, infos, timestamp
 
-def handle_summary(experiment, summaries, cached, filepaths, recovery = False):
+def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = False):
     summary_path, output_prefix = filepaths
     summary = pd.read_csv(summary_path)
     if experiment["config_mod"]["logging"]["save_cache"] and not recovery:
@@ -157,12 +159,23 @@ def handle_summary(experiment, summaries, cached, filepaths, recovery = False):
             cached.append(cache)
         except FileNotFoundError:
             print('Warning: Cache file not found.')
+    if experiment["config_mod"]["logging"]["save_all_iterations"] and not recovery:
+        info_file = output_prefix + '_all_info.csv'
+        try:
+            info = pd.read_csv(info_file)
+            info_per_iteration = info.groupby('iteration').agg(
+                r=('r', 'max'),
+            ).reset_index()
+            infos[experiment['benchmark']] = pd.concat()
+        except FileNotFoundError:
+            print('Warning: Info file not found.')
+
     summary["dataset"] = experiment['benchmark']
     summary["sync"] = experiment["config_mod"]["training"]["sync"]
     summary["workers"] = experiment["n_cores_task"] if experiment["config_mod"]["training"]["sync"] else 0
     summaries.append(summary)
 
-    return summaries, cached
+    return summaries, cached, infos
 
 def postprocess(summaries, cached, timestamp, config, save_results=False):
     try:
@@ -250,12 +263,12 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     # benchmarks = [f'Jin-{i}' for i in range(1,7)]
-    # benchmarks = ['Nguyen-1']
+    benchmarks = ['Nguyen-1']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
     start = time.time()
-    summaries, cached, timestamp = benchmark(config, benchmarks, n_cores_task=n_cores_task, recovery_files=recovery_files)
+    summaries, cached, timestamp, infos = benchmark(config, benchmarks, n_cores_task=n_cores_task, recovery_files=recovery_files)
     end = time.time()
     print(f"Time taken to run search: {end - start: .4f} seconds")
 
@@ -266,7 +279,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 20
+    runs = 2
     n_cores_task = 5
     # recovery_files = ['./log_hypers/Jin-1_2025-04-09-1632350', './log_hypers/Jin-1_2025-04-09-1632355', './log_hypers/Jin-2_2025-04-09-1632351', './log_hypers/Jin-2_2025-04-09-1632356']
     recovery_files = None
