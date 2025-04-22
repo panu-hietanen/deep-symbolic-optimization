@@ -268,6 +268,8 @@ class SyncTrainer(Trainer):
         n_extra = sum([w["n_extra"] for w in data])
         if self.save_all_iterations_detailed:
             r_full = np.ma.concatenate([w["r_full"] for w in data])
+        else:
+            r_full = None
 
         grads = self.accumulate_grads(grads)
 
