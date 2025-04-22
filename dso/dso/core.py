@@ -197,6 +197,7 @@ class DeepSymbolicOptimizer():
         self.result_queue = mp.Queue()
         self.param_queue = mp.Queue()
         batch_size = self.config_training["batch_size"]
+        seed = self.config_experiment["seed"]
         n_cores_task = self.config_training.get("n_cores_task")
 
         workers = []
@@ -210,7 +211,8 @@ class DeepSymbolicOptimizer():
                 task_queue=self.task_queue,
                 result_queue=self.result_queue,
                 param_queue = self.param_queue,
-                batch_size = batch_size
+                batch_size = batch_size,
+                seed = seed
             )
             w.start()
             workers.append(w)

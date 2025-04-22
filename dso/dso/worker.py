@@ -1,6 +1,9 @@
 import tensorflow as tf
 import numpy as np
 import multiprocessing as mp
+import zlib
+import random
+from datetime import time
 
 from dso.program import Program, from_tokens
 from dso.tf_state_manager import HierarchicalStateManager, HierarchicalStateManager
@@ -18,9 +21,10 @@ class Worker(mp.Process):
             result_queue,  # used to send sampled batches (or other data) back
             param_queue,  # used to receive updated parameters from the main process
             batch_size,
+            seed
     ):
         super().__init__()
-        # tf.reset_default_graph()
+        tf.reset_default_graph()
         self.sess = None
         self.policy = None
         self.state_manager = None
@@ -34,6 +38,9 @@ class Worker(mp.Process):
         self.result_queue = result_queue
         self.param_queue = param_queue
         self.batch_size = batch_size
+        self.seed = seed
+
+        self.set_seeds()
 
     def run(self):
         while True:
@@ -117,3 +124,26 @@ class Worker(mp.Process):
         from main process.
         """
         self.policy.set_params_numpy(params, self.worker_id)
+
+    def set_seeds(self):
+        """
+        Set the tensorflow, numpy, and random module seeds based on the seed
+        specified in config. If there is no seed or it is None, a time-based
+        seed is used instead and is written to config.
+        """
+
+        # Default uses current time in milliseconds, modulo 1e9
+        if self.seed is None:
+            self.seed = round(time() * 1000) % int(1e9)
+
+        self.seed += self.worker_id
+
+        # Shift the seed based on task name
+        # This ensures a specified seed doesn't have similarities across different task names
+        task_name = Program.task.name
+        shifted_seed = self.seed + zlib.adler32(task_name.encode("utf-8"))
+
+        # Set the seeds using the shifted seed
+        tf.set_random_seed(shifted_seed)
+        np.random.seed(shifted_seed)
+        random.seed(shifted_seed)
