@@ -274,13 +274,6 @@ class SyncTrainer(Trainer):
 
         self.nevals += self.batch_size * self.n_cores_task + n_extra
 
-        # # Request reward computation from workers
-        # programs_split = np.array_split(programs, self.n_cores_task)
-        # for batch in programs_split:
-        #     self.task_queue.put({"type": "reward", "programs": batch})
-        #
-        # # Collect computed rewards
-        # programs = sum([self.result_queue.get() for _ in range(self.n_cores_task)], [])
         r = np.array([p.r for p in programs])
         r_max = np.max(r)
 
