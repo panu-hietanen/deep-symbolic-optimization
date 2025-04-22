@@ -118,12 +118,17 @@ class DeepSymbolicOptimizer():
         if self.trainer.done:
             return self.finish()
 
-    def train(self):
+    def train(self, start=None):
         """
         Train the model until completion.
         """
 
         # Setup the model
+        if start is None:
+            self.start = time()
+        else:
+            self.start = start
+
         self.setup()
 
         # Train the model until done
@@ -147,6 +152,8 @@ class DeepSymbolicOptimizer():
             "traversal" : repr(p),
             "program" : p
         })
+
+        result.update({"t": time() - self.start})
 
         # Save all results available only after all iterations are finished. Also return metrics to be added to the summary file
         results_add = self.logger.save_results(self.pool, self.trainer.nevals)
