@@ -274,8 +274,11 @@ class SyncTrainer(Trainer):
 
         self.nevals += self.batch_size * self.n_cores_task + n_extra
 
+        # Compute rewards (or retrieve cached rewards)
         r = np.array([p.r for p in programs])
-        r_max = np.max(r)
+
+        # Back up programs to save them properly later
+        controller_programs = programs.copy() if self.logger.save_token_count else None
 
         # Need for Vanilla Policy Gradient (epsilon = null)
         l           = np.array([len(p.traversal) for p in programs])
@@ -283,7 +286,6 @@ class SyncTrainer(Trainer):
         on_policy   = np.array([p.originally_on_policy for p in programs])
         invalid     = np.array([p.invalid for p in programs], dtype=bool)
 
-        # Logging
         if self.logger.save_positional_entropy:
             positional_entropy = np.apply_along_axis(empirical_entropy, 0, actions)
 
@@ -294,43 +296,55 @@ class SyncTrainer(Trainer):
             for idx in sorted_idx[:top_perc]:
                 top_samples_per_batch.append([self.iteration, r[idx], repr(programs[idx])])
 
-        # Back up programs for logging
-        controller_programs = programs.copy() if self.logger.save_token_count else None
-
-        # Store for logging
+        # Store in variables the values for the whole batch (those variables will be modified below)
         r_full = r
         l_full = l
         s_full = s
         actions_full = actions
         invalid_full = invalid
+        r_max = np.max(r)
 
-        # Compute risk-seeking filter
+        """
+        Apply risk-seeking policy gradient: compute the empirical quantile of
+        rewards and filter out programs with lesser reward.
+        """
         programs, r, keep, quantile = self.risk_seeking_filter(programs, r)
-        actions = actions[keep, :]
-        obs = obs[keep, :, :]
-        priors = priors[keep, :, :]
 
+        # Filter quantities whose reward >= quantile
         l = l[keep]
         s = list(compress(s, keep))
         invalid = invalid[keep]
+        actions = actions[keep, :]
+        obs = obs[keep, :, :]
+        priors = priors[keep, :, :]
         on_policy = on_policy[keep]
+
+        # Clip bounds of rewards to prevent NaNs in gradient descent
+        r = np.clip(r, -1e6, 1e6)
 
         # Compute baseline
         b, ewma = self.compute_baseline(r, quantile, ewma)
 
+        # Compute sequence lengths
+        lengths = np.array([min(len(p.traversal), self.policy.max_length)
+                            for p in programs], dtype=np.int32)
+
         # Create the Batch
         sampled_batch = Batch(actions=actions, obs=obs, priors=priors,
-                              lengths=l,
-                              rewards=r, on_policy=on_policy)
+                            lengths=lengths, rewards=r, on_policy=on_policy)
 
+        pqt_batch = None
         # Train the policy
         summaries = self.policy_optimizer.train_step(b, sampled_batch)
 
-        # Update memory queue
+        # Walltime calculation for the iteration
+        iteration_walltime = time.time() - start_time
+
+        # Update the memory queue
         if self.memory_queue is not None:
             self.memory_queue.push_batch(sampled_batch, programs)
 
-        # Update best expression
+        # Update new best expression
         if r_max > self.r_best:
             self.r_best = r_max
             self.p_r_best = programs[np.argmax(r)]
@@ -341,14 +355,14 @@ class SyncTrainer(Trainer):
                 print("\n\t** New best")
                 self.p_r_best.print_stats()
 
-        # Logging
-        iteration_walltime = time.time() - start_time
+        # Collect sub-batch statistics and write output
         self.logger.save_stats(r_full, l_full, actions_full, s_full,
                                invalid_full, r, l, actions, s, s_history,
                                invalid, self.r_best, r_max, ewma, summaries,
                                self.iteration, b, iteration_walltime,
                                self.nevals, controller_programs,
                                positional_entropy, top_samples_per_batch)
+
 
         # Stop if early stopping criteria is met
         if self.early_stopping and self.p_r_best.evaluate.get("success"):
