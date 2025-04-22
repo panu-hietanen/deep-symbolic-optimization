@@ -174,13 +174,13 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Training Parameters
-    batch_sizes = [2000, 3000]
+    batch_sizes = [1000, 2000, 3000]
     epsilons = [0.01, 0.05]
 
     # Vanilla PG Parameters
     learning_rates = [5e-5, 1e-4, 5e-4]
-    entropy_weights = [0.03, 0.01, 0.05]
-    entropy_gammas = [0.99]
+    entropy_weights = [0.03, 0.01, 0.005]
+    entropy_gammas = [0.7]
 
     # PPO Parameters
     ppo_clip_ratio  = [0.1, 0.2, 0.3]
@@ -188,7 +188,7 @@ def main(save_results=False, config_path='', random=False, trials=None, n_cores_
     ppo_n_mb = [1, 4, 8]
 
     # Benchmarks
-    benchmarks = ['Nguyen-7', 'Nguyen-10']
+    benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
 
     param_dicts = [
         {"lr": lr, "ew": ew, "eg": eg, "batch_size": bs, "epsilon": ep, "bench": bench}
