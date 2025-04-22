@@ -23,9 +23,11 @@ class StatsLogger():
     """ Class responsible for dealing with output files of training statistics.
         It encapsulates all outputs to files."""
 
-    def __init__(self, sess, output_file, sync=False, save_summary=False, save_all_iterations=False, hof=100,
-                 save_pareto_front=True, save_positional_entropy=False, save_top_samples_per_batch=0,
-                 save_cache=False, save_cache_r_min=0.9, save_freq=1, save_token_count=False):
+    def __init__(self, sess, output_file, sync=False, save_summary=False, save_all_iterations=False,
+                 save_all_iterations_detailed=False, hof=100, save_pareto_front=True, save_positional_entropy=False,
+                 save_top_samples_per_batch=0, save_cache=False, save_cache_r_min=0.9, save_freq=1,
+                 save_token_count=False
+                 ):
 
         """"
         sess : tf.Session
@@ -69,6 +71,7 @@ class StatsLogger():
         self.sync = sync
         self.save_summary = save_summary
         self.save_all_iterations = save_all_iterations
+        self.save_all_iterations_detailed = save_all_iterations_detailed
         self.hof = hof
         self.save_pareto_front = save_pareto_front
         self.save_positional_entropy = save_positional_entropy
@@ -87,6 +90,7 @@ class StatsLogger():
 
         self.buffer_iteration_stats = StringIO() # Buffer for iteration statistics
         self.buffer_all_programs = StringIO() # Buffer for the statistics for all programs.
+        self.buffer_all_programs_detailed = StringIO() # Buffer for the statistics for all programs.
         self.buffer_token_stats = StringIO() # Buffer for iteration statistics
         self.buffer_top_samples = StringIO() # Buffer for top samples per batch
         self.buffer_pos_entropy = BytesIO()  # Buffer for positional entropy
@@ -102,6 +106,7 @@ class StatsLogger():
             prefix, _ = os.path.splitext(self.output_file)
             self.all_r_output_file = "{}_all_r.npy".format(prefix)
             self.all_info_output_file = "{}_all_info.csv".format(prefix)
+            self.all_info_detailed_output_file = "{}_all_info_detailed.csv".format(prefix)
             self.hof_output_file = "{}_hof.csv".format(prefix)
             self.pf_output_file = "{}_pf.csv".format(prefix)
             self.positional_entropy_output_file = "{}_positional_entropy.npy".format(prefix)
@@ -147,6 +152,16 @@ class StatsLogger():
                     headers = ["iteration",
                                 "r"]
                     f.write("{}\n".format(",".join(headers)))
+
+                if self.save_all_iterations_detailed:
+                    with open(self.all_info_detailed_output_file, 'w') as f:
+                        # iteration : The iteration in which this line was saved
+                        # r : reward for this program
+                        # l : length of the program
+                        # invalid : if the program is invalid
+                        headers = ["iteration",
+                                   "r"]
+                        f.write("{}\n".format(",".join(headers)))
             if self.save_token_count:
                 with open(self.token_counter_output_file, 'w') as f:
                     headers = [str(token) for token in Program.library.tokens]
@@ -155,6 +170,7 @@ class StatsLogger():
         else:
             self.all_r_output_file = None
             self.all_info_output_file = None
+            self.all_info_detailed_output_file = None
             self.hof_output_file = None
             self.pf_output_file = None
             self.positional_entropy_output_file = None
@@ -206,7 +222,10 @@ class StatsLogger():
         """
         iteration = iteration + 1 # Change from 0- to 1-based indexing
         if self.output_file is not None:
-            r_avg_full = np.mean(r_full)
+            if self.save_all_iterations_detailed:
+                r_avg_full = np.mean(r_full)
+            else:
+                r_avg_full = np.nan
 
             # l_avg_full = np.mean(l_full)
             # a_ent_full = np.mean(np.apply_along_axis(empirical_entropy, 0, actions_full))
@@ -214,7 +233,7 @@ class StatsLogger():
             # n_novel_full = len(set(s_full).difference(s_history))
             # invalid_avg_full = np.mean(invalid_full)
 
-            # r_avg_sub = np.mean(r)
+            r_avg_sub = np.mean(r)
             # l_avg_sub = np.mean(l)
             # a_ent_sub = np.mean(np.apply_along_axis(empirical_entropy, 0, actions))
             # n_unique_sub = len(set(s))
@@ -224,14 +243,22 @@ class StatsLogger():
                 r_best,
                 r_max,
                 r_avg_full,
+                r_avg_sub,
                 iteration_walltime,
                 nevals
             ]], dtype=np.float32)
             np.savetxt(self.buffer_iteration_stats, stats, delimiter=',')
         if self.save_all_iterations:
+            if self.save_all_iterations_detailed:
+                all_iteration_stats_detailed = np.array([
+                    [iteration] * len(r_full),
+                    r_full
+                ]).transpose()
+                df = pd.DataFrame(all_iteration_stats_detailed)
+                df.to_csv(self.buffer_all_programs_detailed, mode='a', header=False, index=False, line_terminator='\n')
             all_iteration_stats = np.array([
-                              [iteration] * len(r_full),
-                              r_full
+                              [iteration] * len(r),
+                              r
                               ]).transpose()
             df = pd.DataFrame(all_iteration_stats)
             df.to_csv(self.buffer_all_programs, mode='a', header=False, index=False, line_terminator='\n')
@@ -250,7 +277,10 @@ class StatsLogger():
 
         #Backwards compatibility of all_r numpy file
         if self.save_all_iterations:
-            self.all_r.append(r_full)
+            if self.save_all_iterations_detailed:
+                self.all_r.append(r_full)
+            else:
+                self.all_r.append(r)
 
         if self.save_positional_entropy:
             #with open(self.buffer_pos_entropy, 'ab') as f:
@@ -402,6 +432,9 @@ class StatsLogger():
         if self.save_all_iterations:
             self.buffer_all_programs = self.flush_buffer(
                 self.buffer_all_programs, self.all_info_output_file)
+            if self.save_all_iterations_detailed:
+                self.buffer_all_programs_detailed = self.flush_buffer(
+                    self.buffer_all_programs_detailed, self.all_info_detailed_output_file)
         if self.save_token_count:
             self.buffer_token_stats = self.flush_buffer(
                 self.buffer_token_stats, self.token_counter_output_file)

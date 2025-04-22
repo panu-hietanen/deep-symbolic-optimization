@@ -112,6 +112,8 @@ class Worker(mp.Process):
                 l = np.array([len(p.traversal) for p in programs])
                 on_policy = np.array([p.originally_on_policy for p in programs])
 
+                r_full = r if task["detailed"] else None
+
                 programs, r, keep, quantile = self.risk_seeking_filter(programs, r)
                 actions = actions[keep, :]
                 obs = obs[keep, :, :]
@@ -139,6 +141,7 @@ class Worker(mp.Process):
                     "p_r_best": self.p_r_best,
                     "n_extra": n_extra,
                     "r": r,
+                    "r_full": r_full
                 }
                 self.result_queue.put(data)
 

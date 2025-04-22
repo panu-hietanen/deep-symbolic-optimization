@@ -240,6 +240,7 @@ class SyncTrainer(Trainer):
         self.result_queue = result_queue
         self.param_queue = param_queue
         self.workers = workers
+        self.save_all_iterations_detailed = self.logger.save_all_iterations_detailed
 
     def run_one_step(self, override=None):
         if self.debug >= 1:
@@ -256,7 +257,7 @@ class SyncTrainer(Trainer):
 
         # Request batch samples from workers
         for _ in range(self.n_cores_task):
-            self.task_queue.put({"type": "sample", "override": override})
+            self.task_queue.put({"type": "sample", "override": override, "detailed": self.save_all_iterations_detailed})
         
         # Collect batch samples from workers
         data = [self.result_queue.get() for _ in range(self.n_cores_task)]
@@ -265,6 +266,10 @@ class SyncTrainer(Trainer):
         r_all = np.ma.concatenate([w["r"] for w in data])
         p_r_bests = [w["p_r_best"] for w in data]
         n_extra = sum([w["n_extra"] for w in data])
+        if self.save_all_iterations_detailed:
+            r_full = np.ma.concatenate([w["r_full"] for w in data])
+        else:
+            r_full = None
 
         grads = self.accumulate_grads(grads)
 
@@ -283,8 +288,8 @@ class SyncTrainer(Trainer):
 
         # Logging
         iteration_walltime = time.time() - start_time
-        self.logger.save_stats(r_all, _, _, _,
-                               _, _, _, _, _, _,
+        self.logger.save_stats(r_full, _, _, _,
+                               _, r_all, _, _, _, _,
                                _, self.r_best, r_max, _, _,
                                self.iteration, _, iteration_walltime,
                                self.nevals, _,
