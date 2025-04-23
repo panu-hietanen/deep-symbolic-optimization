@@ -119,6 +119,12 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
         messages.append(
                 "INFO: Setting 'parallel_eval' to 'False' as we are already parallelizing.")
         config["gp_meld"]["parallel_eval"] = False
+    if config["logging"]["save_all_iterations_detailed"]:
+        if not config["logging"]["save_all_iterations"]:
+            messages.append(
+                "INFO: Setting detailed logging to 'False' as logging is not enabled."
+            )
+            config["logging"]["save_all_iterations_detailed"] = False
 
     # Start training
     print_summary(config, runs, messages)

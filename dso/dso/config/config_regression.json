@@ -84,7 +84,8 @@
    },
 
      "logging" : {
-      "save_all_iterations" : true,
+      "save_all_iterations" : false,
+      "save_all_iterations_detailed" : false,
       "save_cache" : true,
       "save_cache_r_min" : 0.75,
    },
