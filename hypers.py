@@ -19,7 +19,8 @@ PARAM_MAPPING = {
     'alpha_train': 'alpha',
     'clip': 'ppo_clip_ratio',
     'iters': 'ppo_n_iters',
-    'mb': 'ppo_n_mb'
+    'mb': 'ppo_n_mb',
+    'bench': 'dataset'
 }
 
 CONFIG_MAPPING = {
@@ -32,6 +33,7 @@ CONFIG_MAPPING = {
     'batch_size': 'training',
     'epsilon': 'training',
     'alpha_train': 'training',
+    'bench': 'task'
 }
 
 def grid_search(config, param_dicts):
@@ -53,7 +55,7 @@ def grid_search(config, param_dicts):
                     config_mod['policy_optimizer']['policy_optimizer_type'] = 'ppo'
             exp_suffix = exp_suffix[:-1]
 
-            config_mod, runs, n_cores_task = clean_config(config_mod)
+            config_mod, runs, n_cores_task = clean_config(config_mod, seed=i)
             # Adjust run directory to keep results separate
             # e.g. append a suffix with the hyperparams
             # Here we incorporate them into the 'exp_name'
@@ -68,13 +70,21 @@ def grid_search(config, param_dicts):
             config_mod["experiment"]["exp_name"] += "_" + timestamp
             config_mod["experiment"]["logdir"] = "./log_hypers"
 
-            print(f"\n=== Running grid search with {params} ({i}/{n}) ===")
+            if config_mod['policy_optimizer']['policy_optimizer_type'] == 'ppo':
+                print(f"\n=== Running PPO grid search with {params} ({i}/{n}) ===")
+            else:
+                print(f"\n=== Running grid search with {params} ({i}/{n}) ===")
 
             summary_path, output_prefix = run_experiment(config_mod, runs, n_cores_task)
 
             filepaths = (summary_path, output_prefix)
             paths.append(filepaths)
-            summaries, cached, t = handle_summary(config_mod, params, summaries, cached, filepaths)
+            experiment = {
+                "config_mod": config_mod,
+                "params": params,
+                "n_cores_task": n_cores_task
+            }
+            summaries, cached, t = handle_summary(experiment, summaries, cached, filepaths)
 
             print(f"=== FINISHED ITERATION {i} in {float(t): .4f} seconds===")
     except KeyboardInterrupt:
@@ -84,14 +94,20 @@ def grid_search(config, param_dicts):
         summaries = []
         timestamp = "RECOVERY"
         for path, params in zip(paths[:-1], param_dicts[:-1]):
-            summaries, cached, _ = handle_summary(config, params, summaries, cached, path, recovery=True)
+            experiment = {
+                "config_mod": config,
+                "params": params,
+                "n_cores_task": None
+            }
+            summaries, cached, _ = handle_summary(experiment, summaries, cached, path, recovery=True)
 
     return summaries, cached, timestamp
 
-def handle_summary(config, params, summaries, cached, filepaths, recovery=False):
+def handle_summary(experiment, summaries, cached, filepaths, recovery=False):
     summary_path, output_prefix = filepaths
+    config, params, n_cores_task = experiment.values()
     summary = pd.read_csv(summary_path)
-    if config["logging"]["save_cache"]:
+    if config["logging"]["save_cache"] and not recovery:
         cache_file = output_prefix + "_cache.csv"
         try:
             cache = pd.read_csv(cache_file)
@@ -102,6 +118,7 @@ def handle_summary(config, params, summaries, cached, filepaths, recovery=False)
     parameters = json.dumps(params)
     summary["params_json"] = parameters
     summary["dataset"] = config["task"]["dataset"]
+    summary["workers"] = n_cores_task if not recovery else 1
     summaries.append(summary)
     t = summary["t"]
 
@@ -135,30 +152,40 @@ def main(save_results=False, config_path='', random=False, trials=None):
         raise ValueError(f'Error reading config file {config_path}: {e}')
 
     # Training Parameters
-    batch_sizes = [500, 1000, 5000]
-    epsilons = [0.01, 0.05, 0.1]
+    batch_sizes = [1000]
+    epsilons = [0.05, 0.1]
 
     # Vanilla PG Parameters
     learning_rates = [5e-5, 1e-4, 5e-4]
-    entropy_weights = [0.01, 0.03, 0.1]
-    entropy_gammas = [0.5, 0.75, 0.99]
+    entropy_weights = [0.03, 0.005]
+    entropy_gammas = [0.03, 0.1]
 
     # PPO Parameters
-    ppo_clip_ratio  = [0.1, 0.2, 0.3]
-    ppo_n_iters = [5, 10, 15]
-    ppo_n_mb = [1, 4, 8]
+    ppo_clip_ratio  = [0.1, 0.2]
+    ppo_n_iters = [3, 5]
+    ppo_n_mb = [5, 10]
+
+    # Benchmarks
+    benchmarks = ['Nguyen-12', 'Nguyen-1']
 
     param_dicts = [
-        {"lr": lr, "ew": ew, "eg": eg, "clip": clip, "iters": iters, "mb": mb}
-        for lr, ew, eg, clip, iters, mb in
-        itertools.product(learning_rates, entropy_weights, entropy_gammas, ppo_clip_ratio, ppo_n_iters, ppo_n_mb)
+        {"batch_size": bs, "epsilon": eps, "lr": lr, "ew": ew, "clip": clip, "iters": iters, "mb": mb, "bench": b}
+        for bs, eps, lr, ew, clip, iters, mb, b in
+        itertools.product(batch_sizes, epsilons, learning_rates, entropy_weights, ppo_clip_ratio, ppo_n_iters, ppo_n_mb,
+                          benchmarks)
+    ]
+
+    param_dicts = [
+        {"lr": lr, "bench": b}
+        for lr, b in
+        itertools.product(learning_rates, benchmarks)
     ]
 
     # For testing
-    param_dicts = [
-        {"lr": lr}
-        for lr in learning_rates
-    ]
+    # param_dicts = [
+    #     {"lr": lr}
+    #     for lr in learning_rates
+    # ]
 
     start = time.time()
     if random:
