@@ -61,6 +61,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
                     "config_mod": config_mod,
                     "benchmark": config_mod['task']['dataset'],
                     "n_cores_task": n_cores_task,
+                    "runs": runs
                 }
 
                 summaries, cached, infos = handle_summary(experiment, summaries, infos,
@@ -106,6 +107,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
                 "config_mod": config_mod,
                 "benchmark": benchmark,
                 "n_cores_task": n_cores_task,
+                "runs": runs
             }
             summaries, cached, infos = handle_summary(experiment, summaries, infos, cached, filepaths)
 
@@ -121,6 +123,7 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
                 "config_mod": config_mod,
                 "benchmark": benchmark,
                 "n_cores_task": n_cores_task,
+                "runs": runs
             }
             summaries, cached, infos = handle_summary(experiment, summaries, infos, cached, path, recovery=True)
 
@@ -137,30 +140,46 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery=Fal
         except FileNotFoundError:
             print('Warning: Cache file not found.')
     if experiment["config_mod"]["logging"]["save_all_iterations"] and not recovery:
-        info_file = output_prefix + '_all_info.csv'
+        indexed_output = output_prefix[:-2]
+        infos_per_iteration = []
         try:
-            info = pd.read_csv(info_file)
-            info_per_iteration = info.groupby('iteration').agg(
-                r_max=('r', 'max'),
-                r_mean=('r', 'mean'),
-            ).reset_index()
+            for i in range(experiment["runs"]):
+                info_file = f'{indexed_output}_{i}_all_info.csv'
+                info = pd.read_csv(info_file)
+                info_per_iteration = info.groupby('iteration').agg(
+                    r_max=('r', 'max'),
+                    r_mean=('r', 'mean'),
+                ).reset_index()
+                infos_per_iteration.append(info_per_iteration)
 
             if experiment["config_mod"]["logging"]["save_all_iterations_detailed"]:
-                detailed_info_file = output_prefix + '_all_info_detailed.csv'
+                detailed_infos_per_iteration = []
                 try:
-                    detailed_info = pd.read_csv(detailed_info_file)
-                    detailed_info_per_iteration = detailed_info.groupby('iteration').agg(
-                        r_mean_all=('r', 'mean'),
-                    ).reset_index()
+                    for i in range(experiment["runs"]):
+                        detailed_info_file = f'{indexed_output}_{i}_all_info_detailed.csv'
+                        detailed_info = pd.read_csv(detailed_info_file)
+                        detailed_info_per_iteration = detailed_info.groupby('iteration').agg(
+                            r_mean_all=('r', 'mean'),
+                        ).reset_index()
 
-                    info_per_iteration = info_per_iteration.join(detailed_info_per_iteration.set_index("iteration"),
-                                                    on="iteration")
+                        detailed_infos_per_iteration.append(detailed_info_per_iteration)
+                    temp = []
+                    for (i, i_det) in zip(infos_per_iteration, detailed_infos_per_iteration):
+                        info_comb = i.join(i_det.set_index("iteration"), on="iteration")
+                        temp.append(info_comb)
+                    infos_per_iteration = temp
                 except FileNotFoundError:
                     print('Warning: Detailed info file not found.')
-            if experiment['benchmark'] in infos:
-                infos[experiment['benchmark']].append(info_per_iteration)
+            if experiment["runs"] == 1:
+                if experiment['benchmark'] in infos:
+                    infos[experiment['benchmark']].append(infos_per_iteration[0])
+                else:
+                    infos[experiment['benchmark']] = [infos_per_iteration[0]]
             else:
-                infos[experiment['benchmark']] = [info_per_iteration]
+                if experiment['benchmark'] in infos:
+                    infos[experiment['benchmark']] += infos_per_iteration
+                else:
+                    infos[experiment['benchmark']] = infos_per_iteration
         except FileNotFoundError:
             print('Warning: Info file not found.')
 
@@ -298,7 +317,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    benchmarks = ['Nguyen-1']
+    benchmarks = ['Nguyen-1', 'Nguyen-11']
     # benchmarks = [f'Jin-{i}' for i in range(1,6)]
 
     start = time.time()
@@ -313,7 +332,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 5
+    runs = 2
     n_cores_task = 1
     recovery_files = None
     main(save_results, config_path, runs, n_cores_task, recovery_files)
