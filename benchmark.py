@@ -148,6 +148,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery=Fal
                 info = pd.read_csv(info_file)
                 info_per_iteration = info.groupby('iteration').agg(
                     r_max=('r', 'max'),
+                    r_min=('r', 'min'),
                     r_mean=('r', 'mean'),
                 ).reset_index()
                 infos_per_iteration.append(info_per_iteration)
@@ -317,7 +318,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
-    benchmarks = ['Nguyen-1', 'Nguyen-11']
+    # benchmarks = ['Nguyen-1', 'Nguyen-11']
     # benchmarks = [f'Jin-{i}' for i in range(1,6)]
 
     start = time.time()
@@ -332,7 +333,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 2
+    runs = 20
     n_cores_task = 1
     recovery_files = None
     main(save_results, config_path, runs, n_cores_task, recovery_files)
