@@ -125,6 +125,12 @@ def clean_config(config_template="", runs=1, n_cores_task=1, seed=None, benchmar
         messages.append(
             "INFO: Logging will be diminished for synchronous run."
         )
+    if config["logging"]["save_all_iterations_detailed"]:
+        if not config["logging"]["save_all_iterations"]:
+            messages.append(
+                "INFO: Setting detailed logging to 'False' as logging is not enabled."
+            )
+            config["logging"]["save_all_iterations_detailed"] = False
 
     # Save n_cores_task to config
     config["training"]["n_cores_task"] = n_cores_task

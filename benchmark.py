@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import copy
 import itertools
+from functools import reduce
 
 from dso import DeepSymbolicOptimizer
 from dso.logeval import LogEval
@@ -164,16 +165,26 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
         try:
             info = pd.read_csv(info_file)
             info_per_iteration = info.groupby('iteration').agg(
-                r=('r', 'max'),
+                r_max=('r', 'max'),
+                r_mean=('r', 'mean'),
             ).reset_index()
+
+            if experiment["config_mod"]["logging"]["save_all_iterations_detailed"]:
+                detailed_info_file = output_prefix + '_all_info_detailed.csv'
+                try:
+                    detailed_info = pd.read_csv(detailed_info_file)
+                    detailed_info_per_iteration = detailed_info.groupby('iteration').agg(
+                        r_mean_all=('r', 'mean'),
+                    ).reset_index()
+
+                    info_per_iteration = info_per_iteration.join(detailed_info_per_iteration.set_index("iteration"),
+                                                    on="iteration")
+                except FileNotFoundError:
+                    print('Warning: Detailed info file not found.')
             if experiment['benchmark'] in infos:
-                combined = pd.concat([infos[experiment['benchmark']], info_per_iteration],
-                                                           ignore_index=True)
-                infos[experiment['benchmark']] = combined.groupby('iteration').agg(
-                    r=('r', 'max')
-                ).reset_index()
+                infos[experiment['benchmark']].append(info_per_iteration)
             else:
-                infos[experiment['benchmark']] = info_per_iteration
+                infos[experiment['benchmark']] = [info_per_iteration]
         except FileNotFoundError:
             print('Warning: Info file not found.')
 
@@ -245,10 +256,13 @@ def postprocess(summaries, cached, infos, timestamp, config, save_results=False)
         all_caches_sorted = None
 
     if infos:
-        all_info = pd.concat(
-            [df.assign(dataset=key) for key, df in infos.items()],
-            ignore_index=True
-        )
+        combined_dfs = []
+        for benchmark, dfs in infos.items():
+            combined_df = handle_df_list(dfs)
+            combined_df["dataset"] = benchmark
+            combined_dfs.append(combined_df)
+
+        all_info = pd.concat(combined_dfs)
     else:
         all_info = None
 
@@ -270,6 +284,34 @@ def postprocess(summaries, cached, infos, timestamp, config, save_results=False)
         if all_info is not None:
             all_info.to_csv(f'{folder}/all_info.csv', index=False)
 
+def handle_df_list(dfs):
+    renamed_dfs = []
+
+    for i, df in enumerate(dfs):
+        # Select all columns except 'r_max'
+        available_cols = [col for col in df.columns if col != "r_max" and col != "iteration"]
+
+        # Always include 'iteration' for merging
+        temp = df[["iteration"] + available_cols].copy()
+
+        # Rename all non-iteration columns with run index suffix
+        temp = temp.rename(columns={col: f"{col}:{i}" for col in available_cols})
+
+        renamed_dfs.append(temp)
+
+    # Merge all renamed temp dfs on 'iteration'
+    merged_metrics = reduce(lambda left, right: pd.merge(left, right, on="iteration", how="outer"), renamed_dfs)
+
+    # r_max aggregation
+    r_max_df = pd.concat([df[["iteration", "r_max"]] for df in dfs if "r_max" in df.columns], ignore_index=True)
+    r_max_grouped = r_max_df.groupby("iteration", as_index=False).agg(r_max=("r_max", "max"))
+
+    # Final merge
+    final_df = pd.merge(r_max_grouped, merged_metrics, on="iteration", how="outer")
+    final_df = final_df.sort_values("iteration").reset_index(drop=True)
+
+    return final_df
+
 
 def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_files=None):
     try:
@@ -281,7 +323,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     # benchmarks = [f'Jin-{i}' for i in range(3,7)]
-    benchmarks = ['Nguyen-1', 'Nguyen-11']
+    # benchmarks = ['Nguyen-1', 'Nguyen-11']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
@@ -297,9 +339,9 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 1
+    runs = 20
     n_cores_task = 5
-    recovery_files = ['./log_hypers/Jin-1_2025-04-09-1632350', './log_hypers/Jin-1_2025-04-09-1632355', './log_hypers/Jin-2_2025-04-09-1632351', './log_hypers/Jin-2_2025-04-09-1632356']
+    # recovery_files = ['./log_hypers/Jin-1_2025-04-09-1632350', './log_hypers/Jin-1_2025-04-09-1632355', './log_hypers/Jin-2_2025-04-09-1632351', './log_hypers/Jin-2_2025-04-09-1632356']
     recovery_files = None
     main(save_results, config_path, runs, n_cores_task, recovery_files)
 
