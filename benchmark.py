@@ -166,7 +166,9 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
             info = pd.read_csv(info_file)
             info_per_iteration = info.groupby('iteration').agg(
                 r_max=('r', 'max'),
+                r_min=('r', 'min'),
                 r_mean=('r', 'mean'),
+                r_std=('r', 'std'),
             ).reset_index()
 
             if experiment["config_mod"]["logging"]["save_all_iterations_detailed"]:
@@ -175,10 +177,16 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
                     detailed_info = pd.read_csv(detailed_info_file)
                     detailed_info_per_iteration = detailed_info.groupby('iteration').agg(
                         r_mean_all=('r', 'mean'),
+                        r_min_all=('r', 'min'),
                     ).reset_index()
 
                     info_per_iteration = info_per_iteration.join(detailed_info_per_iteration.set_index("iteration"),
                                                     on="iteration")
+                    
+                    info_per_iteration["r_min"] = info_per_iteration[["r_min", "r_min_all"]].min(axis=1)
+                    info_per_iteration = info_per_iteration[[
+                        "iteration", "r_max", "r_min", "r_mean", "r_mean_all", "r_std"
+                    ]]
                 except FileNotFoundError:
                     print('Warning: Detailed info file not found.')
             if experiment['benchmark'] in infos:
