@@ -8,6 +8,7 @@ import pandas as pd
 import copy
 import itertools
 from functools import reduce
+import re
 
 from run_utils import run_experiment, clean_config
 
@@ -140,7 +141,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery=Fal
         except FileNotFoundError:
             print('Warning: Cache file not found.')
     if experiment["config_mod"]["logging"]["save_all_iterations"] and not recovery:
-        indexed_output = output_prefix[:-2]
+        indexed_output = re.sub(r'_\d{1,2}$', '', output_prefix)
         infos_per_iteration = []
         try:
             for i in range(experiment["runs"]):
