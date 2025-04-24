@@ -303,8 +303,15 @@ def handle_df_list(dfs):
     r_max_df = pd.concat([df[["iteration", "r_max"]] for df in dfs if "r_max" in df.columns], ignore_index=True)
     r_max_grouped = r_max_df.groupby("iteration", as_index=False).agg(r_max=("r_max", "max"))
 
+    # r_min aggregation
+    r_min_df = pd.concat([df[["iteration", "r_min"]] for df in dfs if "r_min" in df.columns], ignore_index=True)
+    r_min_grouped = r_min_df.groupby("iteration", as_index=False).agg(r_min=("r_min", "min"))
+
+    # Merge r_max and r_min
+    extremes_df = pd.merge(r_max_grouped, r_min_grouped, on="iteration", how="outer")
+
     # Final merge
-    final_df = pd.merge(r_max_grouped, merged_metrics, on="iteration", how="outer")
+    final_df = pd.merge(extremes_df, merged_metrics, on="iteration", how="outer")
     final_df = final_df.sort_values("iteration").reset_index(drop=True)
 
     return final_df
@@ -334,8 +341,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
 if __name__ == "__main__":
     save_results = True
     config_path = '/homes/55/panu/4yp/deep-symbolic-optimization/dso/dso/config/config_regression.json'
-    runs = 20
+    runs = 1
     n_cores_task = 1
     recovery_files = None
     main(save_results, config_path, runs, n_cores_task, recovery_files)
-
