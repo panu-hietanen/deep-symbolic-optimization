@@ -151,6 +151,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery=Fal
                     r_max=('r', 'max'),
                     r_min=('r', 'min'),
                     r_mean=('r', 'mean'),
+                    r_std=('r', 'std')
                 ).reset_index()
                 infos_per_iteration.append(info_per_iteration)
 
@@ -162,6 +163,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery=Fal
                         detailed_info = pd.read_csv(detailed_info_file)
                         detailed_info_per_iteration = detailed_info.groupby('iteration').agg(
                             r_mean_all=('r', 'mean'),
+                            r_min_all=('r', 'min')
                         ).reset_index()
 
                         detailed_infos_per_iteration.append(detailed_info_per_iteration)
@@ -283,38 +285,18 @@ def postprocess(summaries, cached, infos, timestamp, config, save_results=False)
 
 def handle_df_list(dfs):
     renamed_dfs = []
-
     for i, df in enumerate(dfs):
-        # Select all columns except 'r_max'
-        available_cols = [col for col in df.columns if col != "r_max" and col != "iteration"]
-
-        # Always include 'iteration' for merging
-        temp = df[["iteration"] + available_cols].copy()
-
-        # Rename all non-iteration columns with run index suffix
-        temp = temp.rename(columns={col: f"{col}:{i}" for col in available_cols})
-
+        # build a rename dict for exactly the cols in *this* df
+        to_rename = {col: f"{col}:{i}" for col in df.columns if col != "iteration"}
+        temp = df.rename(columns=to_rename)
         renamed_dfs.append(temp)
 
-    # Merge all renamed temp dfs on 'iteration'
-    merged_metrics = reduce(lambda left, right: pd.merge(left, right, on="iteration", how="outer"), renamed_dfs)
-
-    # r_max aggregation
-    r_max_df = pd.concat([df[["iteration", "r_max"]] for df in dfs if "r_max" in df.columns], ignore_index=True)
-    r_max_grouped = r_max_df.groupby("iteration", as_index=False).agg(r_max=("r_max", "max"))
-
-    # r_min aggregation
-    r_min_df = pd.concat([df[["iteration", "r_min"]] for df in dfs if "r_min" in df.columns], ignore_index=True)
-    r_min_grouped = r_min_df.groupby("iteration", as_index=False).agg(r_min=("r_min", "min"))
-
-    # Merge r_max and r_min
-    extremes_df = pd.merge(r_max_grouped, r_min_grouped, on="iteration", how="outer")
-
-    # Final merge
-    final_df = pd.merge(extremes_df, merged_metrics, on="iteration", how="outer")
-    final_df = final_df.sort_values("iteration").reset_index(drop=True)
-
-    return final_df
+    # outer-merge all of them on 'iteration'
+    final_df = reduce(
+        lambda left, right: pd.merge(left, right, on="iteration", how="outer"),
+        renamed_dfs
+    )
+    return final_df.sort_values("iteration").reset_index(drop=True)
 
 
 def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_files=None):
