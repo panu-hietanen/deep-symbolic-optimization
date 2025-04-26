@@ -130,7 +130,8 @@ class StatsLogger():
                            "r_avg_sub",
                            "time",
                            "nevals",
-                           "idle_time"]
+                           "max_idle_time",
+                           "average_idle_time"]
                 f.write("{}\n".format(",".join(headers)))
             if self.save_all_iterations:
                 with open(self.all_info_output_file, 'w') as f:
@@ -181,7 +182,8 @@ class StatsLogger():
     def save_stats(self, r_full, l_full, actions_full, s_full, invalid_full, r,
                    l, actions, s, s_history, invalid, r_best, r_max, ewma,
                    summaries, iteration, baseline, iteration_walltime, nevals,
-                   programs, positional_entropy, top_samples_per_batch, idle_time):
+                   programs, positional_entropy, top_samples_per_batch, 
+                   max_idle_time, average_idle_time):
 
         """
         Computes and saves all statistics that are computed for every time step. Depending on the value of
@@ -235,7 +237,8 @@ class StatsLogger():
                 r_avg_sub,
                 iteration_walltime,
                 nevals,
-                idle_time
+                max_idle_time,
+                average_idle_time
             ]], dtype=np.float32)
             np.savetxt(self.buffer_iteration_stats, stats, delimiter=',')
         if self.save_all_iterations:

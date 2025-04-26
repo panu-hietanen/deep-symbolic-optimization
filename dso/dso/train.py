@@ -287,7 +287,8 @@ class SyncTrainer(Trainer):
         # Train the policy
         _ = self.policy_optimizer.apply_grads(grads)
 
-        idle_time = max(times) - min(times)
+        max_idle_time = max(times) - min(times)
+        average_idle_time = sum(times - min(times)) / (len(times) - 1)
 
         # Logging
         iteration_walltime = time.time() - start_time
@@ -296,7 +297,7 @@ class SyncTrainer(Trainer):
                                _, self.r_best, r_max, _, _,
                                self.iteration, _, iteration_walltime,
                                self.nevals, _,
-                               _, _, idle_time)
+                               _, _, max_idle_time, average_idle_time)
 
         # Stop if early stopping criteria is met
         if self.early_stopping and self.p_r_best.evaluate.get("success"):
