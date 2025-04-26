@@ -128,20 +128,9 @@ class StatsLogger():
                            "r_max",
                            "r_avg_full",
                            "r_avg_sub",
-                           "l_avg_full",
-                           "l_avg_sub",
-                           "ewma",
-                           "n_unique_full",
-                           "n_unique_sub",
-                           "n_novel_full",
-                           "n_novel_sub",
-                           "a_ent_full",
-                           "a_ent_sub",
-                           "invalid_avg_full",
-                           "invalid_avg_sub",
-                           "baseline",
                            "time",
-                           "nevals"]
+                           "nevals",
+                           "idle_time"]
                 f.write("{}\n".format(",".join(headers)))
             if self.save_all_iterations:
                 with open(self.all_info_output_file, 'w') as f:
@@ -192,7 +181,7 @@ class StatsLogger():
     def save_stats(self, r_full, l_full, actions_full, s_full, invalid_full, r,
                    l, actions, s, s_history, invalid, r_best, r_max, ewma,
                    summaries, iteration, baseline, iteration_walltime, nevals,
-                   programs, positional_entropy, top_samples_per_batch):
+                   programs, positional_entropy, top_samples_per_batch, idle_time):
 
         """
         Computes and saves all statistics that are computed for every time step. Depending on the value of
@@ -245,7 +234,8 @@ class StatsLogger():
                 r_avg_full,
                 r_avg_sub,
                 iteration_walltime,
-                nevals
+                nevals,
+                idle_time
             ]], dtype=np.float32)
             np.savetxt(self.buffer_iteration_stats, stats, delimiter=',')
         if self.save_all_iterations:

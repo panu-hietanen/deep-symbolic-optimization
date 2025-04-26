@@ -153,6 +153,8 @@ def benchmark(config, benchmarks, runs=1, n_cores_task=1, recovery_files=None):
 def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = False):
     summary_path, output_prefix = filepaths
     summary = pd.read_csv(summary_path)
+    output_file = pd.read_csv(output_prefix + ".csv")
+    timings = output_file["idle_time"]
     if experiment["config_mod"]["logging"]["save_cache"] and not recovery:
         cache_file = output_prefix + "_cache.csv"
         try:
@@ -188,6 +190,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
                     ]]
                 except FileNotFoundError:
                     print('Warning: Detailed info file not found.')
+            info_per_iteration = pd.concat([info_per_iteration, timings], axis=1)
             if experiment['benchmark'] in infos:
                 infos[experiment['benchmark']].append(info_per_iteration)
             else:

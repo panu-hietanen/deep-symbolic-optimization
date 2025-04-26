@@ -266,6 +266,7 @@ class SyncTrainer(Trainer):
         r_all = np.ma.concatenate([w["r"] for w in data])
         p_r_bests = [w["p_r_best"] for w in data]
         n_extra = sum([w["n_extra"] for w in data])
+        times = [w["worker_time"] for w in data]
         if self.save_all_iterations_detailed:
             r_full = np.ma.concatenate([w["r_full"] for w in data])
         else:
@@ -286,6 +287,8 @@ class SyncTrainer(Trainer):
         # Train the policy
         _ = self.policy_optimizer.apply_grads(grads)
 
+        idle_time = max(times) - min(times)
+
         # Logging
         iteration_walltime = time.time() - start_time
         self.logger.save_stats(r_full, _, _, _,
@@ -293,7 +296,7 @@ class SyncTrainer(Trainer):
                                _, self.r_best, r_max, _, _,
                                self.iteration, _, iteration_walltime,
                                self.nevals, _,
-                               _, _)
+                               _, _, idle_time)
 
         # Stop if early stopping criteria is met
         if self.early_stopping and self.p_r_best.evaluate.get("success"):

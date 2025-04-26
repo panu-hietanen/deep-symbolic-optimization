@@ -102,6 +102,8 @@ class Worker(mp.Process):
             elif task["type"] == "sample":
                 ewma = None if self.b_jumpstart else 0.0  # EWMA portion of baseline
 
+                start_time = time()
+
                 override = task["override"]
                 actions, obs, priors, programs, n_extra = self.sample_batch(override)
                 for p in programs:
@@ -141,7 +143,8 @@ class Worker(mp.Process):
                     "p_r_best": self.p_r_best,
                     "n_extra": n_extra,
                     "r": r,
-                    "r_full": r_full
+                    "r_full": r_full,
+                    "worker_time": time() - start_time,
                 }
                 self.result_queue.put(data)
 
