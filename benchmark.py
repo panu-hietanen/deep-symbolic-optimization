@@ -186,7 +186,8 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
                                                     on="iteration")
                     
                     info_per_iteration = info_per_iteration[[
-                        "iteration", "r_max", "r_min", "r_min_all", "r_mean", "r_mean_all", "r_std"
+                        "iteration", "r_max", "r_min", "r_min_all", "r_mean", "r_mean_all", "r_std", 
+                            "max_idle_time", "average_idle_time"
                     ]]
                 except FileNotFoundError:
                     print('Warning: Detailed info file not found.')
