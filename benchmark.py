@@ -186,9 +186,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
                                                     on="iteration")
                     
                     info_per_iteration = info_per_iteration[[
-                        "iteration", "r_max", "r_min", "r_min_all", "r_mean", "r_mean_all", "r_std", 
-                            "max_idle_time", "average_idle_time"
-                    ]]
+                        "iteration", "r_max", "r_min", "r_min_all", "r_mean", "r_mean_all", "r_std"]]
                 except FileNotFoundError:
                     print('Warning: Detailed info file not found.')
             info_per_iteration = pd.concat([info_per_iteration, timings], axis=1)
@@ -321,7 +319,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     # benchmarks = [f'Jin-{i}' for i in range(1,7)]
-    # benchmarks = ['Nguyen-1', 'Nguyen-11']
+    benchmarks = ['Nguyen-12']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
