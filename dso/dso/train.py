@@ -266,7 +266,7 @@ class SyncTrainer(Trainer):
         r_all = np.ma.concatenate([w["r"] for w in data])
         p_r_bests = [w["p_r_best"] for w in data]
         n_extra = sum([w["n_extra"] for w in data])
-        times = [w["worker_time"] for w in data]
+        times = np.array([w["worker_time"] for w in data])
         if self.save_all_iterations_detailed:
             r_full = np.ma.concatenate([w["r_full"] for w in data])
         else:

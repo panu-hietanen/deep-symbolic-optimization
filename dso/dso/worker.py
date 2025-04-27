@@ -5,6 +5,7 @@ import multiprocessing as mp
 import zlib
 import random
 from datetime import time
+import time
 
 from dso.memory import Batch
 from dso.policy_optimizer.pg_policy_optimizer import PGPolicyOptimizer
@@ -102,7 +103,7 @@ class Worker(mp.Process):
             elif task["type"] == "sample":
                 ewma = None if self.b_jumpstart else 0.0  # EWMA portion of baseline
 
-                start_time = time()
+                start_time = time.time()
 
                 override = task["override"]
                 actions, obs, priors, programs, n_extra = self.sample_batch(override)
@@ -144,7 +145,7 @@ class Worker(mp.Process):
                     "n_extra": n_extra,
                     "r": r,
                     "r_full": r_full,
-                    "worker_time": time() - start_time,
+                    "worker_time": time.time() - start_time,
                 }
                 self.result_queue.put(data)
 
