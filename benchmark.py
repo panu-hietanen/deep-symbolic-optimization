@@ -154,7 +154,7 @@ def handle_summary(experiment, summaries, infos, cached, filepaths, recovery = F
     summary_path, output_prefix = filepaths
     summary = pd.read_csv(summary_path)
     output_file = pd.read_csv(output_prefix + ".csv")
-    timings = output_file[["max_idle_time", "average_idle_time"]]
+    timings = output_file[["time", "max_idle_time", "average_idle_time"]]
     if experiment["config_mod"]["logging"]["save_cache"] and not recovery:
         cache_file = output_prefix + "_cache.csv"
         try:
