@@ -94,8 +94,8 @@
    // // Only the key Policy Optimizer hyperparameters are listed here. See
    // // config_common.json for the full list.
    "policy_optimizer" : {
-      "learning_rate" : 0.0009,
-      "entropy_weight" : 0.01,
+      "learning_rate" : 0.0005,
+      "entropy_weight" : 0.03,
       "entropy_gamma" : 0.7,
 
       // EXPERIMENTAL: Proximal policy optimization hyperparameters.
