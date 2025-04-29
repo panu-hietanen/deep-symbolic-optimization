@@ -317,7 +317,7 @@ def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_fi
     # Benchmarks
     benchmarks = [f'Nguyen-{i}' for i in range(1,13)]
     # benchmarks = [f'Jin-{i}' for i in range(1,7)]
-    # benchmarks = ['Nguyen-1', 'Nguyen-11']
+    benchmarks = ['Nguyen-5', 'Nguyen-7']
     print(f"INFO: RUNNING {len(benchmarks)} BENCHMARKS {runs} TIMES")
     benchmarks *= runs
 
