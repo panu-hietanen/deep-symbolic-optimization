@@ -69,57 +69,6 @@ class PPOPolicyOptimizer(PolicyOptimizer):
         with tf.name_scope("summary"):
             tf.summary.scalar("ppo_loss", self.ppo_loss)
 
-    def compute_grads(self, baseline, sampled_batch):
-        """
-        Compute—but do not apply—PPO gradients for the given baseline & Batch.
-        Returns a list of length `ppo_n_iters`, each element is itself
-        a list of `ppo_n_mb` lists-of-gradient‐arrays.
-        """
-        # 1) Prepare the feed_dict for the full batch
-        feed_dict = {
-            self.baseline: baseline,
-            self.sampled_batch_ph: sampled_batch
-        }
-        n = sampled_batch.rewards.shape[0]
-
-        # 2) Compute old_neglogp for _all_ samples
-        old_neglogp = self.sess.run(self.neglogp, feed_dict=feed_dict)
-
-        # 3) Now do ppo_n_iters passes over shuffled minibatches,
-        #    but instead of sess.run(train_op) we run self.grads
-        all_grad_lists = []
-        idx = np.arange(n)
-        for _ in range(self.ppo_n_iters):
-            self.rng.shuffle(idx)
-            mb_indices = np.array_split(idx, self.ppo_n_mb)
-
-            iter_grad_lists = []
-            for mb in mb_indices:
-                # slice out a smaller Batch for this minibatch
-                mb_batch = Batch(
-                    **{k: v[mb] for k, v in sampled_batch._asdict().items()}
-                )
-                mb_feed = {
-                        self.baseline: baseline,
-                        self.batch_size: len(mb),
-                        self.old_neglogp_ph: old_neglogp[mb],
-                        self.sampled_batch_ph: mb_batch
-                }
-                # 4) RUN the gradient tensors, *not* the train_op
-                grad_list = self.sess.run(self.grads, feed_dict=mb_feed)
-                iter_grad_lists.append(grad_list)
-
-            all_grad_lists.append(iter_grad_lists)
-
-        # all_grad_lists is shape (ppo_n_iters, ppo_n_mb, [ num_params ])
-        return all_grad_lists
-
-    def apply_grads(self, grad_list):
-        """Apply external gradients."""
-        feed_dict = {}
-        for placeholder, array in zip(self.grad_placeholders, grad_list):
-            feed_dict[placeholder] = array
-        self.sess.run(self.apply_op, feed_dict=feed_dict)
 
     def train_step(self, baseline, sampled_batch):
         feed_dict = {

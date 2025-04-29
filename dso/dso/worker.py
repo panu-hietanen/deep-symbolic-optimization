@@ -8,7 +8,6 @@ from datetime import time
 
 from dso.memory import Batch
 from dso.policy_optimizer.pg_policy_optimizer import PGPolicyOptimizer
-from dso.policy_optimizer.ppo_policy_optimizer import PPOPolicyOptimizer
 from dso.program import Program, from_tokens
 from dso.tf_state_manager import HierarchicalStateManager, HierarchicalStateManager
 
@@ -43,7 +42,7 @@ class Worker(mp.Process):
         self.policy_class = policy_class
         self.prior = prior
         self.policy_kwargs = {key: value for key,value in policy_kwargs.items() if key != 'policy_type'}
-        self.policy_optimizer_kwargs = policy_optimizer_kwargs
+        self.policy_optimizer_kwargs = {key:value for key,value in policy_optimizer_kwargs.items() if key != 'policy_optimizer_type'}
         self.state_manager_kwargs = state_manager_kwargs
         self.state_manager_kwargs = {key: value for key,value in state_manager_kwargs.items() if key != 'type'}
         self.task_queue = task_queue
@@ -88,19 +87,11 @@ class Worker(mp.Process):
                     )
 
                 if self.policy_optimizer is None:
-                    po_type = self.policy_optimizer_kwargs.pop('policy_optimizer_type')
-                    if po_type == 'pg':
-                        self.policy_optimizer = PGPolicyOptimizer(
-                            self.sess,
-                            self.policy,
-                            **self.policy_optimizer_kwargs
-                        )
-                    elif po_type == 'ppo':
-                        self.policy_optimizer = PPOPolicyOptimizer(
-                            self.sess,
-                            self.policy,
-                            **self.policy_optimizer_kwargs
-                        )
+                    self.policy_optimizer = PGPolicyOptimizer(
+                        self.sess,
+                        self.policy,
+                        **self.policy_optimizer_kwargs
+                    )
 
                 self.sess.run(tf.global_variables_initializer())
 
