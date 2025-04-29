@@ -70,44 +70,43 @@ class PPOPolicyOptimizer(PolicyOptimizer):
             tf.summary.scalar("ppo_loss", self.ppo_loss)
 
     def compute_grads(self, baseline, sampled_batch):
-        """
-        Compute—but do not apply—PPO gradients for the given baseline & Batch.
-        Returns a flat list of gradient‐lists, each gradient‐list itself
-        having length = number of trainable parameters.
-        """
-        # 1) Prepare the feed_dict for the full batch
         feed_dict = {
-            self.baseline: baseline,
-            self.sampled_batch_ph: sampled_batch
+            self.baseline : baseline,
+            self.sampled_batch_ph : sampled_batch
         }
-        n = sampled_batch.rewards.shape[0]
+        n_samples = sampled_batch.rewards.shape[0]
 
-        # 2) Compute old_neglogp for entire batch
+
+        # Compute old_neglogp to be used for training
         old_neglogp = self.sess.run(self.neglogp, feed_dict=feed_dict)
 
-        flat_grad_lists = []
-        idx = np.arange(n)
-        for _ in range(self.ppo_n_iters):
-            self.rng.shuffle(idx)
-            mb_indices = np.array_split(idx, self.ppo_n_mb)
-
-            for mb in mb_indices:
-                # slice out a smaller Batch for this minibatch
-                mb_batch = Batch(
-                    **{k: v[mb] for k, v in sampled_batch._asdict().items()}
-                )
-                mb_feed = {
-                    self.baseline: baseline,
-                    self.batch_size: len(mb),
-                    self.old_neglogp_ph: old_neglogp[mb],
-                    self.sampled_batch_ph: mb_batch
+        # Perform multiple steps of minibatch training
+        # feed_dict[self.old_neglogp_ph] = old_neglogp
+        indices = np.arange(n_samples)
+        for ppo_iter in range(self.ppo_n_iters):
+            self.rng.shuffle(indices) # in-place
+            # list of [ppo_n_mb] arrays
+            minibatches = np.array_split(indices, self.ppo_n_mb)
+            for i, mb in enumerate(minibatches):
+                sampled_batch_mb = Batch(
+                        **{name: array[mb] for name, array
+                           in sampled_batch._asdict().items()})
+                mb_feed_dict = {
+                        self.baseline: baseline,
+                        self.batch_size: len(mb),
+                        self.old_neglogp_ph: old_neglogp[mb],
+                        self.sampled_batch_ph: sampled_batch_mb
                 }
-                # RUN the gradient tensors (not the train_op)
-                grad_list = self.sess.run(self.grads, feed_dict=mb_feed)
-                flat_grad_lists.append(grad_list)
 
-        # Now flat_grad_lists is List[List[np.ndarray]] of length ppo_n_iters*ppo_n_mb
-        return flat_grad_lists
+                grads = self.sess.run(self.grads, feed_dict=mb_feed_dict)
+
+                # Diagnostics
+                # kl, cf, _ = self.sess.run(
+                #     [self.sample_kl, self.clip_fraction, self.train_op],
+                #     feed_dict=mb_feed_dict)
+                # print("ppo_iter", ppo_iter, "i", i, "KL", kl, "CF", cf)
+
+        return grads
 
     def apply_grads(self, grad_list):
         """Apply external gradients."""
