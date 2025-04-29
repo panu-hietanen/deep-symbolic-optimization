@@ -293,31 +293,18 @@ def postprocess(summaries, cached, infos, timestamp, config, save_results=False)
 
 def handle_df_list(dfs):
     renamed_dfs = []
-
     for i, df in enumerate(dfs):
-        # Select all columns except 'r_max'
-        available_cols = [col for col in df.columns if col != "r_max" and col != "iteration"]
-
-        # Always include 'iteration' for merging
-        temp = df[["iteration"] + available_cols].copy()
-
-        # Rename all non-iteration columns with run index suffix
-        temp = temp.rename(columns={col: f"{col}:{i}" for col in available_cols})
-
+        # build a rename dict for exactly the cols in *this* df
+        to_rename = {col: f"{col}:{i}" for col in df.columns if col != "iteration"}
+        temp = df.rename(columns=to_rename)
         renamed_dfs.append(temp)
 
-    # Merge all renamed temp dfs on 'iteration'
-    merged_metrics = reduce(lambda left, right: pd.merge(left, right, on="iteration", how="outer"), renamed_dfs)
-
-    # r_max aggregation
-    r_max_df = pd.concat([df[["iteration", "r_max"]] for df in dfs if "r_max" in df.columns], ignore_index=True)
-    r_max_grouped = r_max_df.groupby("iteration", as_index=False).agg(r_max=("r_max", "max"))
-
-    # Final merge
-    final_df = pd.merge(r_max_grouped, merged_metrics, on="iteration", how="outer")
-    final_df = final_df.sort_values("iteration").reset_index(drop=True)
-
-    return final_df
+    # outer-merge all of them on 'iteration'
+    final_df = reduce(
+        lambda left, right: pd.merge(left, right, on="iteration", how="outer"),
+        renamed_dfs
+    )
+    return final_df.sort_values("iteration").reset_index(drop=True)
 
 
 def main(save_results=False, config_path='', runs=1, n_cores_task=1, recovery_files=None):
