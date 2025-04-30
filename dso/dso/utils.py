@@ -331,47 +331,43 @@ def make_batch_ph(name : str, n_choices : int):
     return batch_ph
 
 def merge_batches(worker_batches):
-    """Merge batches received from worker processes, padding to maximum length with correct tokens."""
-
-    # Avoid circular import
     from dso.program import Program
 
-    all_actions, all_obs, all_priors, all_programs = zip(*worker_batches)
+    actions_list, obs_list, priors_list, programs_list = zip(*worker_batches)
+    batch_counts   = [a.shape[0] for a in actions_list]
+    lengths        = [a.shape[1] for a in actions_list]
+    max_length     = max(lengths)
 
-    # Find the global maximum length
-    max_length = max(actions.shape[1] for actions in all_actions)
+    # Pad actions
+    padded_actions = []
+    for A, L in zip(actions_list, lengths):
+        pad_amt = max_length - L
+        A_p = np.pad(A, ((0,0),(0,pad_amt)),
+                     constant_values=Program.library.EMPTY_ACTION)
+        padded_actions.append(A_p)
 
-    # Pad actions to the global maximum length
-    padded_actions = [
-        np.pad(actions, ((0, 0), (0, max_length - actions.shape[1])), constant_values=Program.library.EMPTY_ACTION)
-        for actions in all_actions
-    ]
+    # Pad obs with a mask-friendly zero, then fill the channels beyond L
+    padded_obs = []
+    for O, L in zip(obs_list, lengths):
+        pad_amt = max_length - L
+        O_p = np.pad(O, ((0,0),(0,0),(0,pad_amt)), constant_values=0)
+        # fill in the token channels after L
+        O_p[:, 0, L:] = Program.library.EMPTY_ACTION
+        O_p[:, 1, L:] = Program.library.EMPTY_PARENT
+        O_p[:, 2, L:] = Program.library.EMPTY_SIBLING
+        O_p[:, 3, L:] = 0
+        padded_obs.append(O_p)
 
-    # Pad obs to the global maximum length
-    padded_obs = [
-        np.pad(obs, ((0, 0), (0, 0), (0, max_length - obs.shape[2])), constant_values=0)
-        for obs in all_obs
-    ]
-
-    # Correct padding per obs dimension
-    for obs in padded_obs:
-        original_length = obs.shape[2] - (max_length - obs.shape[2])
-        if original_length < max_length:
-            obs[:, 0, original_length:] = Program.library.EMPTY_ACTION
-            obs[:, 1, original_length:] = Program.library.EMPTY_PARENT
-            obs[:, 2, original_length:] = Program.library.EMPTY_SIBLING
-            obs[:, 3, original_length:] = 0  # dangling dimension
-
-    # Pad priors to the global maximum length
+    # Pad priors with zeros
     padded_priors = [
-        np.pad(priors, ((0, 0), (0, max_length - priors.shape[1]), (0, 0)), constant_values=0)
-        for priors in all_priors
+      np.pad(P, ((0,0),(0, max_length-L),(0,0)), constant_values=0)
+      for P, L in zip(priors_list, lengths)
     ]
 
-    # Concatenate everything
-    combined_actions = np.concatenate(padded_actions, axis=0)
-    combined_obs = np.concatenate(padded_obs, axis=0)
-    combined_priors = np.concatenate(padded_priors, axis=0)
-    combined_programs = sum(all_programs, [])
+    # Stack them all
+    big_actions = np.concatenate(padded_actions, axis=0)
+    big_obs     = np.concatenate(padded_obs,     axis=0)
+    big_priors  = np.concatenate(padded_priors,  axis=0)
+    big_programs= sum(programs_list, [])
 
-    return combined_actions, combined_obs, combined_priors, combined_programs
+    return big_actions, big_obs, big_priors, big_programs
